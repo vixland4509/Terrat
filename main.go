@@ -9,10 +9,8 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
-
-	"github.com/jezek/xgb"
-	"github.com/jezek/xgb/xproto"
 
 	"terrat/autosuggest"
 	"terrat/config"
@@ -37,12 +35,22 @@ var (
 )
 
 type Tab struct {
-	ID      int
-	Title   string
-	Term    *terminal.Terminal
-	PTY     *pty.TerminalPTY
-	ExitCh  chan struct{}
-	HasBell bool
+	ID        int
+	Title     string
+	Term      *terminal.Terminal
+	PTY       *pty.TerminalPTY
+	ExitCh    chan struct{}
+	closeOnce sync.Once
+	HasBell   bool
+}
+
+func (t *Tab) Close() {
+	t.closeOnce.Do(func() {
+		close(t.ExitCh)
+	})
+	if t.PTY != nil {
+		_ = t.PTY.Close()
+	}
 }
 
 type tabTitleMsg struct {
@@ -95,6 +103,10 @@ func main() {
 
 	initCols := 80
 	initRows := 24
+	if runtime.GOOS == "windows" {
+		initCols = 128
+		initRows = 33
+	}
 	initWidth := uint16(render.PaddingLeft + (initCols * fontEngine.CharWidth()) + render.PaddingRight)
 	initHeight := uint16(render.HeaderHeight + render.PaddingTop + (initRows * fontEngine.CharHeight()) + render.PaddingBottom)
 
@@ -131,11 +143,6 @@ func main() {
 		}
 	}
 
-	keyHandler, err := platform.NewKeyHandler(win.X)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to query keyboard mapping: %v\n", err)
-	}
-
 	redrawCh := make(chan struct{}, 1)
 	triggerRedraw := func() {
 		select {
@@ -167,11 +174,11 @@ func main() {
 		}
 		nextTabID++
 
-		go func(id int, pm *pty.TerminalPTY, exitCh chan struct{}) {
-			_, _ = pm.Wait()
-			close(exitCh)
+		go func(id int, tab *Tab) {
+			_, _ = tab.PTY.Wait()
+			tab.Close()
 			tabExitNotifyCh <- id
-		}(tab.ID, pMaster, tab.ExitCh)
+		}(tab.ID, tab)
 
 		go func(id int, pm *pty.TerminalPTY, term *terminal.Terminal) {
 			buf := make([]byte, 8192)
@@ -190,11 +197,39 @@ func main() {
 			}
 		}(tab.ID, pMaster, t)
 
-		go func(id int, titleChan chan string) {
-			for title := range titleChan {
-				tabTitleNotifyCh <- tabTitleMsg{tabID: id, title: title}
+		go func(id int, titleChan chan string, exitCh chan struct{}) {
+			for {
+				select {
+				case <-exitCh:
+					return
+				case title, ok := <-titleChan:
+					if !ok {
+						return
+					}
+					select {
+					case tabTitleNotifyCh <- tabTitleMsg{tabID: id, title: title}:
+					case <-exitCh:
+						return
+					}
+				}
 			}
-		}(tab.ID, t.TitleChan)
+		}(tab.ID, t.TitleChan, tab.ExitCh)
+
+		go func(pm *pty.TerminalPTY, respCh chan []byte, exitCh chan struct{}) {
+			for {
+				select {
+				case <-exitCh:
+					return
+				case resp, ok := <-respCh:
+					if !ok {
+						return
+					}
+					if len(resp) > 0 {
+						_, _ = pm.Write(resp)
+					}
+				}
+			}
+		}(pMaster, t.ResponseChan, tab.ExitCh)
 
 		return tab, nil
 	}
@@ -251,7 +286,7 @@ func main() {
 			return
 		}
 		closingTab := tabs[idx]
-		_ = closingTab.PTY.Close()
+		closingTab.Close()
 
 		tabs = append(tabs[:idx], tabs[idx+1:]...)
 		if len(tabs) == 0 {
@@ -286,20 +321,7 @@ func main() {
 		triggerRedraw()
 	}
 
-	xEventCh := make(chan xgb.Event, 1024)
-	go func() {
-		for {
-			ev, err := win.X.WaitForEvent()
-			if ev == nil && err == nil {
-				close(xEventCh)
-				return
-			}
-			if err != nil {
-				continue
-			}
-			xEventCh <- ev
-		}
-	}()
+	xEventCh := win.Events()
 
 	cursorTicker := time.NewTicker(500 * time.Millisecond)
 	defer cursorTicker.Stop()
@@ -566,10 +588,10 @@ func main() {
 	autoScrollTicker := time.NewTicker(40 * time.Millisecond)
 	defer autoScrollTicker.Stop()
 
-	var pendingEvent xgb.Event
+	var pendingEvent platform.Event
 
 	for {
-		var ev xgb.Event
+		var ev platform.Event
 		var ok bool
 
 		if pendingEvent != nil {
@@ -652,7 +674,7 @@ func main() {
 		activePTY := tabs[activeTabIdx].PTY
 
 		switch e := ev.(type) {
-		case xproto.MotionNotifyEvent:
+		case platform.MotionNotifyEvent:
 			lastMotion := e
 		drainMotion:
 			for {
@@ -661,7 +683,7 @@ func main() {
 					if !ok {
 						return
 					}
-					if m, isMotion := nextEv.(xproto.MotionNotifyEvent); isMotion {
+					if m, isMotion := nextEv.(platform.MotionNotifyEvent); isMotion {
 						lastMotion = m
 						continue
 					}
@@ -673,7 +695,7 @@ func main() {
 			}
 			e = lastMotion
 
-			if (e.State & xproto.ButtonMask1) == 0 {
+			if (e.State & platform.ButtonMask1) == 0 {
 				if isSelecting {
 					isSelecting = false
 					dragScrollDelta = 0
@@ -716,7 +738,7 @@ func main() {
 				continue
 			}
 
-			if (e.State&xproto.ButtonMask1) != 0 && isSelecting {
+			if (e.State&platform.ButtonMask1) != 0 && isSelecting {
 				rawY := int(e.EventY)
 				rawX := int(e.EventX)
 				gridEndY := gridStartY + (canvas.Rows() * charH)
@@ -832,7 +854,7 @@ func main() {
 				}
 			}
 
-		case xproto.ButtonPressEvent:
+		case platform.ButtonPressEvent:
 			isCtrl := (e.State & platform.ModCtrl) != 0
 
 			if isCtrl {
@@ -855,7 +877,7 @@ func main() {
 				}
 
 				if isCtrl && hoveredURL != nil {
-					_ = exec.Command("xdg-open", hoveredURL.URL).Start()
+					openURL(hoveredURL.URL)
 					continue
 				}
 
@@ -1042,7 +1064,7 @@ func main() {
 					triggerRedraw()
 				}
 			} else if e.Detail == 2 {
-				win.RequestPaste(xproto.AtomPrimary)
+				win.PastePrimary()
 			} else if e.Detail == 4 {
 				if isPrefOpen {
 					if prefIndex > 0 {
@@ -1095,7 +1117,7 @@ func main() {
 				}
 			}
 
-		case xproto.ButtonReleaseEvent:
+		case platform.ButtonReleaseEvent:
 			if e.Detail == 1 {
 				if isDraggingScrollbar {
 					isDraggingScrollbar = false
@@ -1115,12 +1137,12 @@ func main() {
 				}
 			}
 
-		case xproto.KeyPressEvent:
-			if keyHandler != nil {
-				keysym := keyHandler.KeySym(e)
-				data, action := keyHandler.Translate(e)
+		case platform.KeyPressEvent:
+			keysym := e.KeySym
+			data := string(e.Bytes)
+			action := e.Action
 
-				if action == platform.ActionPreferences {
+			if action == platform.ActionPreferences {
 					isPrefOpen = !isPrefOpen
 					if isPrefOpen {
 						for i, opt := range prefOptions {
@@ -1295,7 +1317,7 @@ func main() {
 				}
 
 				// Shortcut to toggle Live Diagnostics on/off: Ctrl + Shift + D
-				if (e.State&platform.ModCtrl) != 0 && (e.State&platform.ModShift) != 0 && (keysym == 'D' || keysym == 'd') {
+				if action == platform.ActionToggleDiagnostics {
 					appConfig.Diagnostics = !appConfig.Diagnostics
 					_ = config.Save(appConfig)
 					if !appConfig.Diagnostics {
@@ -1342,7 +1364,7 @@ func main() {
 						triggerRedraw()
 					}
 				} else if action == platform.ActionPaste {
-					win.RequestPaste(win.AtomClipboard)
+					win.Paste()
 				} else if action == platform.ActionSelectAll {
 					activeTerm.SelectAll()
 					triggerRedraw()
@@ -1373,7 +1395,7 @@ func main() {
 						activeTerm.ClearSelection()
 						triggerRedraw()
 					} else if len(data) == 1 && data[0] == 0x16 && !activeTerm.IsAlt() {
-						win.RequestPaste(win.AtomClipboard)
+						win.Paste()
 					} else {
 						// Ghost text completion: when Right Arrow (0xff53) or Tab (0xff09) is pressed with an active suggestion
 						if activeGhostText != "" && !activeTerm.IsAlt() {
@@ -1439,25 +1461,18 @@ func main() {
 						}
 
 						activeTerm.ClearSelection()
-						_, _ = activePTY.Write(data)
+						_, _ = activePTY.Write([]byte(data))
 						activeTerm.ResetScroll()
 						triggerRedraw()
 					}
 				}
+
+		case platform.PasteNotifyEvent:
+			if len(e.Text) > 0 {
+				handlePastedData([]byte(e.Text))
 			}
 
-		case xproto.SelectionRequestEvent:
-			win.HandleSelectionRequest(e)
-
-		case xproto.SelectionNotifyEvent:
-			pastedBytes := win.HandleSelectionNotify(e)
-			if len(pastedBytes) > 0 {
-				handlePastedData(pastedBytes)
-			}
-
-		case xproto.SelectionClearEvent:
-
-		case xproto.ConfigureNotifyEvent:
+		case platform.ConfigureNotifyEvent:
 			lastCfg := e
 		drainCfg:
 			for {
@@ -1466,7 +1481,7 @@ func main() {
 					if !ok {
 						return
 					}
-					if cfg, isCfg := nextEv.(xproto.ConfigureNotifyEvent); isCfg {
+					if cfg, isCfg := nextEv.(platform.ConfigureNotifyEvent); isCfg {
 						lastCfg = cfg
 						continue
 					}
@@ -1504,29 +1519,34 @@ func main() {
 				renderScreen()
 			}
 
-		case xproto.ExposeEvent:
+		case platform.ExposeEvent:
 			activeTerm.MarkAllDirty()
 			renderScreen()
 
-		case xproto.MappingNotifyEvent:
-			if keyHandler != nil {
-				_ = keyHandler.RefreshMapping(win.X)
-			}
+		case platform.MappingNotifyEvent:
 
-		case xproto.FocusOutEvent:
+		case platform.FocusOutEvent:
 			isSelecting = false
 			if hoveredURL != nil {
 				hoveredURL = nil
 				triggerRedraw()
 			}
 
-		case xproto.ClientMessageEvent:
-			if e.Format == 32 && len(e.Data.Data32) > 0 && xproto.Atom(e.Data.Data32[0]) == win.AtomWmDeleteWindow {
-				return
-			}
+		case platform.CloseRequestEvent:
+			return
 		}
 
 		runtime.Gosched()
+	}
+}
+
+func openURL(urlStr string) {
+	if runtime.GOOS == "windows" {
+		_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", urlStr).Start()
+	} else if runtime.GOOS == "darwin" {
+		_ = exec.Command("open", urlStr).Start()
+	} else {
+		_ = exec.Command("xdg-open", urlStr).Start()
 	}
 }
 

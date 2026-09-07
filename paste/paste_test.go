@@ -121,3 +121,18 @@ func TestTruncatePreview(t *testing.T) {
 		t.Fatalf("unexpected preview content: %v", preview)
 	}
 }
+
+func TestTruncatePreviewUTF8(t *testing.T) {
+	input := "سلام دنیا و جهان بسیار زیبا\nHello World"
+	preview, total := TruncatePreview(input, 2, 10)
+	if total != 2 {
+		t.Fatalf("expected total 2, got %d", total)
+	}
+	expectedFirst := string([]rune("سلام دنیا و جهان بسیار زیبا")[:7]) + "..."
+	if preview[0] != expectedFirst {
+		t.Fatalf("expected %q, got %q", expectedFirst, preview[0])
+	}
+	if preview[1] != "Hello W..." {
+		t.Fatalf("expected 'Hello W...', got %q", preview[1])
+	}
+}

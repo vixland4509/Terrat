@@ -3,6 +3,7 @@ package render
 import (
 	"image"
 	"os"
+	"path/filepath"
 
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
@@ -29,11 +30,28 @@ type FontEngine struct {
 }
 
 var candidateTTFFonts = []string{
+	// Windows standard fonts
+	`C:\Windows\Fonts\CascadiaMono.ttf`,
+	`C:\Windows\Fonts\CascadiaCode.ttf`,
+	`C:\Windows\Fonts\consola.ttf`,
+	`C:\Windows\Fonts\lucon.ttf`,
+	// Linux standard fonts
 	"/usr/share/fonts/truetype/hack/Hack-Regular.ttf",
 	"/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
 	"/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
 	"/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf",
 	"/usr/share/fonts/truetype/freefont/FreeMono.ttf",
+}
+
+func init() {
+	if windir := os.Getenv("WINDIR"); windir != "" {
+		candidateTTFFonts = append([]string{
+			filepath.Join(windir, "Fonts", "CascadiaMono.ttf"),
+			filepath.Join(windir, "Fonts", "CascadiaCode.ttf"),
+			filepath.Join(windir, "Fonts", "consola.ttf"),
+			filepath.Join(windir, "Fonts", "lucon.ttf"),
+		}, candidateTTFFonts...)
+	}
 }
 
 func NewFontEngine(fontSize float64) (*FontEngine, error) {
@@ -258,6 +276,9 @@ func (fe *FontEngine) Close() {
 }
 
 func DrawGlyphBlit(buf []byte, stride int, cellX, cellY int, mask *GlyphMask, fgPixel, bgPixel uint32, underline bool, baseline int) {
+	if mask == nil {
+		return
+	}
 	width := mask.Width
 	height := mask.Height
 
@@ -270,13 +291,20 @@ func DrawGlyphBlit(buf []byte, stride int, cellX, cellY int, mask *GlyphMask, fg
 	bgB := byte(bgPixel)
 
 	for y := 0; y < height; y++ {
-		bufRowOffset := (cellY+y)*stride + cellX*4
+		py := cellY + y
+		if py < 0 || py*stride >= len(buf) {
+			continue
+		}
+		bufRowOffset := py*stride + cellX*4
 		maskRowOffset := y * width
 
 		for x := 0; x < width; x++ {
-			alpha := int(mask.Alpha[maskRowOffset+x])
 			pixelOffset := bufRowOffset + x*4
+			if pixelOffset < 0 || pixelOffset+3 >= len(buf) {
+				continue
+			}
 
+			alpha := int(mask.Alpha[maskRowOffset+x])
 			if alpha == 0 {
 				buf[pixelOffset+0] = bgB
 				buf[pixelOffset+1] = bgG
@@ -302,14 +330,18 @@ func DrawGlyphBlit(buf []byte, stride int, cellX, cellY int, mask *GlyphMask, fg
 	}
 
 	if underline && baseline+1 < height {
-		y := baseline + 1
-		bufRowOffset := (cellY+y)*stride + cellX*4
-		for x := 0; x < width; x++ {
-			pixelOffset := bufRowOffset + x*4
-			buf[pixelOffset+0] = fgB
-			buf[pixelOffset+1] = fgG
-			buf[pixelOffset+2] = fgR
-			buf[pixelOffset+3] = 0xff
+		py := cellY + baseline + 1
+		if py >= 0 && py*stride < len(buf) {
+			bufRowOffset := py*stride + cellX*4
+			for x := 0; x < width; x++ {
+				pixelOffset := bufRowOffset + x*4
+				if pixelOffset >= 0 && pixelOffset+3 < len(buf) {
+					buf[pixelOffset+0] = fgB
+					buf[pixelOffset+1] = fgG
+					buf[pixelOffset+2] = fgR
+					buf[pixelOffset+3] = 0xff
+				}
+			}
 		}
 	}
 }

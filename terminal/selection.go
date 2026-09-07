@@ -122,8 +122,8 @@ func (t *Terminal) UpdateSelection(x, y int) {
 		if y < t.sel.OrigStartY || (y == t.sel.OrigStartY && x < t.sel.OrigStartX) {
 			t.sel.StartX = wLeft
 			t.sel.StartY = y
-			origLeft, _ := t.findWordBounds(t.sel.OrigStartX, t.sel.OrigStartY)
-			t.sel.EndX = origLeft
+			_, origRight := t.findWordBounds(t.sel.OrigStartX, t.sel.OrigStartY)
+			t.sel.EndX = origRight
 			t.sel.EndY = t.sel.OrigStartY
 		} else {
 			origLeft, _ := t.findWordBounds(t.sel.OrigStartX, t.sel.OrigStartY)

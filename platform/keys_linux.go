@@ -1,3 +1,5 @@
+//go:build !windows
+
 package platform
 
 import (
@@ -5,13 +7,6 @@ import (
 
 	"github.com/jezek/xgb"
 	"github.com/jezek/xgb/xproto"
-)
-
-const (
-	ModShift = 1 << 0
-	ModLock  = 1 << 1
-	ModCtrl  = 1 << 2
-	ModAlt   = 1 << 3
 )
 
 type KeyHandler struct {
@@ -39,37 +34,6 @@ func NewKeyHandler(X *xgb.Conn) (*KeyHandler, error) {
 		keysyms:           mapping.Keysyms,
 	}, nil
 }
-
-type ActionType int
-
-const (
-	ActionNone ActionType = iota
-	ActionScrollUp
-	ActionScrollDown
-	ActionScrollTop
-	ActionScrollBottom
-	ActionCopy
-	ActionPaste
-	ActionSelectAll
-	ActionPreferences
-	ActionZoomIn
-	ActionZoomOut
-	ActionZoomReset
-	ActionNewTab
-	ActionCloseTab
-	ActionNextTab
-	ActionPrevTab
-	ActionSearch
-	ActionSwitchTab1
-	ActionSwitchTab2
-	ActionSwitchTab3
-	ActionSwitchTab4
-	ActionSwitchTab5
-	ActionSwitchTab6
-	ActionSwitchTab7
-	ActionSwitchTab8
-	ActionSwitchTab9
-)
 
 func (kh *KeyHandler) KeySym(ev xproto.KeyPressEvent) xproto.Keysym {
 	keycode := ev.Detail
@@ -188,6 +152,9 @@ func (kh *KeyHandler) Translate(ev xproto.KeyPressEvent) ([]byte, ActionType) {
 		}
 		if keysym == 'F' || keysym == 'f' {
 			return nil, ActionSearch
+		}
+		if keysym == 'D' || keysym == 'd' {
+			return nil, ActionToggleDiagnostics
 		}
 		if keysym == 0xff09 || keysym == 0xfe20 {
 			return nil, ActionPrevTab

@@ -277,3 +277,64 @@ func TestEditorCSICommands(t *testing.T) {
 	}
 }
 
+func TestOSCStringTerminatorST(t *testing.T) {
+	term := New(80, 24)
+
+	// Send OSC 0 title terminated by standard ST (ESC \)
+	term.Write([]byte("\x1b]0;TerraTerminal Test\x1b\\"))
+
+	// Verify title was received
+	select {
+	case title := <-term.TitleChan:
+		if title != "TerraTerminal Test" {
+			t.Fatalf("expected title 'TerraTerminal Test', got %q", title)
+		}
+	default:
+		t.Fatalf("expected title event on TitleChan")
+	}
+
+	// Verify no stray backslash was printed on row 0
+	row0 := term.GetRowString(0)
+	if strings.Contains(row0, "\\") {
+		t.Fatalf("stray backslash detected on screen after OSC ST: %q", row0)
+	}
+}
+
+func TestDeviceStatusReportCPR(t *testing.T) {
+	term := New(80, 24)
+
+	// Move cursor to row 5, col 12 (1-based: 5, 12)
+	term.Write([]byte("\x1b[5;12H"))
+
+	// Send DSR query for cursor position
+	term.Write([]byte("\x1b[6n"))
+
+	select {
+	case resp := <-term.ResponseChan:
+		expected := "\x1b[5;12R"
+		if string(resp) != expected {
+			t.Fatalf("expected CPR response %q, got %q", expected, string(resp))
+		}
+	default:
+		t.Fatalf("expected response on ResponseChan for CSI 6n")
+	}
+}
+
+func TestCursorNextPrevLine(t *testing.T) {
+	term := New(80, 24)
+
+	term.Write([]byte("\x1b[5;10H")) // cursor at row 4, col 9 (0-indexed)
+	term.Write([]byte("\x1b[2E"))    // move down 2 lines and to col 0
+	x, y, _ := term.Cursor()
+	if x != 0 || y != 6 {
+		t.Fatalf("expected cursor at (0, 6) after CSI 2E, got (%d, %d)", x, y)
+	}
+
+	term.Write([]byte("\x1b[1F")) // move up 1 line and to col 0
+	x, y, _ = term.Cursor()
+	if x != 0 || y != 5 {
+		t.Fatalf("expected cursor at (0, 5) after CSI 1F, got (%d, %d)", x, y)
+	}
+}
+
+

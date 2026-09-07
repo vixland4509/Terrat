@@ -337,9 +337,7 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 		if tab.Title == "" {
 			disp = fmt.Sprintf("%d: bash", i+1)
 		}
-		if len(disp) > maxChars && maxChars > 2 {
-			disp = disp[:maxChars-1] + "…"
-		}
+		disp = truncateString(disp, maxChars, "…")
 		tTextY := (HeaderHeight - charH) / 2
 		closeX := tEndX - 18
 		closeEndX := tEndX - 4
@@ -410,10 +408,8 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 		}
 		maxDiagChars := (hudX - (btnX + btnW + 24)) / charW
 		if maxDiagChars > 10 {
-			if len(diagMsg) > maxDiagChars {
-				diagMsg = diagMsg[:maxDiagChars-1] + "…"
-			}
-			chipW := len(diagMsg)*charW + 16
+			diagMsg = truncateString(diagMsg, maxDiagChars, "…")
+			chipW := len([]rune(diagMsg))*charW + 16
 			chipH := 20
 			chipX := hudX - chipW - 14
 			if chipX > btnX+btnW+12 {
@@ -436,6 +432,10 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 	gridStartY := HeaderHeight + PaddingTop
 	gridStartX := PaddingLeft
 	curX, curY, curVis := term.CursorLocked()
+	renderCurX := curX
+	if renderCurX >= c.cols && c.cols > 0 {
+		renderCurX = c.cols - 1
+	}
 	scrollOff := term.ScrollOffLocked()
 	effectiveCurY := curY
 	if scrollOff > 0 {
@@ -489,7 +489,7 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 				fg = th.SelectionFG
 			}
 
-			isCursor := (x == curX && y == effectiveCurY && effectiveCurY < c.rows && curVis && cursorBlink)
+			isCursor := (x == renderCurX && y == effectiveCurY && effectiveCurY < c.rows && curVis && cursorBlink)
 			if isCursor {
 				if isMC {
 					DrawRectBorder(c.Pixels, c.Stride, cellX, cellY, charW, charH, 0x000000)
@@ -990,9 +990,7 @@ func (c *Canvas) RenderPasteConfirmModal(th *terminal.Theme, content string, war
 			bannerMsg = "! Large payload detected: pasting may freeze or slow the shell!"
 		}
 		maxBannerChars := (bannerW - 20) / charW
-		if len(bannerMsg) > maxBannerChars && maxBannerChars > 3 {
-			bannerMsg = bannerMsg[:maxBannerChars-3] + "..."
-		}
+		bannerMsg = truncateString(bannerMsg, maxBannerChars, "...")
 		c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, bannerX+10, bannerY+(bannerH-charH)/2, bannerMsg, 0xffaa00, 0x3f2a00, true)
 
 		boxX := modalX + 14
@@ -1023,9 +1021,7 @@ func (c *Canvas) RenderPasteConfirmModal(th *terminal.Theme, content string, war
 			c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, boxX+10, lineY, numStr, 0x888888, 0x222222, false)
 
 			cleanL := strings.ReplaceAll(l, "\t", "    ")
-			if len(cleanL) > maxLineChars {
-				cleanL = cleanL[:maxLineChars-3] + "..."
-			}
+			cleanL = truncateString(cleanL, maxLineChars, "...")
 			c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, boxX+10+len(numStr)*charW, lineY, cleanL, 0xe0e0e0, 0x383838, false)
 		}
 
@@ -1093,9 +1089,7 @@ func (c *Canvas) RenderPasteConfirmModal(th *terminal.Theme, content string, war
 		bannerMsg = "! Large payload detected: pasting may freeze or slow the shell!"
 	}
 	maxBannerChars := (bannerW - 20) / charW
-	if len(bannerMsg) > maxBannerChars && maxBannerChars > 3 {
-		bannerMsg = bannerMsg[:maxBannerChars-3] + "..."
-	}
+	bannerMsg = truncateString(bannerMsg, maxBannerChars, "...")
 	c.fontEngine.DrawString(c.Pixels, c.Stride, bannerX+10, bannerY+(bannerH-charH)/2, bannerMsg, warnPixel, modalHeaderBGPixel, true)
 
 	// 4. Preview Box
@@ -1124,9 +1118,7 @@ func (c *Canvas) RenderPasteConfirmModal(th *terminal.Theme, content string, war
 		c.fontEngine.DrawString(c.Pixels, c.Stride, boxX+10, lineY, numStr, mutedTextPixel, modalHeaderBGPixel, false)
 
 		cleanL := strings.ReplaceAll(l, "\t", "    ")
-		if len(cleanL) > maxLineChars {
-			cleanL = cleanL[:maxLineChars-3] + "..."
-		}
+		cleanL = truncateString(cleanL, maxLineChars, "...")
 		c.fontEngine.DrawString(c.Pixels, c.Stride, boxX+10+len(numStr)*charW, lineY, cleanL, fgPixel, modalHeaderBGPixel, false)
 	}
 
@@ -1158,4 +1150,19 @@ func (c *Canvas) RenderPasteConfirmModal(th *terminal.Theme, content string, war
 	DrawRectBorder(c.Pixels, c.Stride, modalX, modalY, modalW, modalH, borderPixel)
 
 	return modalX, modalY, modalW, modalH
+}
+
+func truncateString(s string, maxChars int, ellipsis string) string {
+	if maxChars <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= maxChars {
+		return s
+	}
+	eRunes := []rune(ellipsis)
+	if maxChars <= len(eRunes) {
+		return string(runes[:maxChars])
+	}
+	return string(runes[:maxChars-len(eRunes)]) + ellipsis
 }

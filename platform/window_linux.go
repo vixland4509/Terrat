@@ -1,42 +1,16 @@
+//go:build !windows
+
 package platform
 
 import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/jezek/xgb"
 	"github.com/jezek/xgb/bigreq"
 	"github.com/jezek/xgb/xproto"
-)
-
-type CursorType int
-
-const (
-	CursorDefault CursorType = iota
-	CursorText
-	CursorPointer
-	CursorResizeTopLeft
-	CursorResizeTop
-	CursorResizeTopRight
-	CursorResizeRight
-	CursorResizeBottomRight
-	CursorResizeBottom
-	CursorResizeBottomLeft
-	CursorResizeLeft
-)
-
-const (
-	ResizeTopLeft     = 0
-	ResizeTop         = 1
-	ResizeTopRight    = 2
-	ResizeRight       = 3
-	ResizeBottomRight = 4
-	ResizeBottom      = 5
-	ResizeBottomLeft  = 6
-	ResizeLeft        = 7
-	ResizeMove        = 8
-	ResizeNone        = -1
 )
 
 type Window struct {
@@ -63,6 +37,7 @@ type Window struct {
 	AtomTerratPaste     xproto.Atom
 	AtomNetWmOpacity    xproto.Atom
 
+	clipMu        sync.RWMutex
 	clipboardText string
 	primaryText   string
 
@@ -71,6 +46,9 @@ type Window struct {
 	pixmapH       uint16
 	cursors       map[CursorType]xproto.Cursor
 	currentCursor CursorType
+
+	keyHandler *KeyHandler
+	eventCh    chan Event
 }
 
 func NewWindow(title string, width, height uint16, iconPath string, iconData []byte) (*Window, error) {
@@ -304,6 +282,10 @@ func NewWindow(title string, width, height uint16, iconPath string, iconData []b
 	_ = xproto.MapWindowChecked(X, winId).Check()
 	X.Sync()
 
+	w.keyHandler, _ = NewKeyHandler(X)
+	w.eventCh = make(chan Event, 1024)
+	go w.eventLoop()
+
 	return w, nil
 }
 
@@ -370,33 +352,7 @@ func (w *Window) SetOpacity(opacity float64) {
 	).Check()
 }
 
-func GetResizeDirection(x, y int, width, height int, borderThreshold int) int {
-	onLeft := x < borderThreshold
-	onRight := x >= width-borderThreshold
-	onTop := y < borderThreshold
-	onBottom := y >= height-borderThreshold
 
-	switch {
-	case onTop && onLeft:
-		return ResizeTopLeft
-	case onTop && onRight:
-		return ResizeTopRight
-	case onBottom && onLeft:
-		return ResizeBottomLeft
-	case onBottom && onRight:
-		return ResizeBottomRight
-	case onTop:
-		return ResizeTop
-	case onBottom:
-		return ResizeBottom
-	case onLeft:
-		return ResizeLeft
-	case onRight:
-		return ResizeRight
-	default:
-		return ResizeNone
-	}
-}
 
 func (w *Window) StartResize(direction int, rootX, rootY int16) {
 	if w.AtomNetWmMoveresize == 0 || direction < 0 || direction > 8 {
@@ -591,7 +547,9 @@ func (w *Window) SetClipboard(text string) {
 	if text == "" {
 		return
 	}
+	w.clipMu.Lock()
 	w.clipboardText = text
+	w.clipMu.Unlock()
 	if w.AtomClipboard != 0 {
 		_ = xproto.SetSelectionOwner(w.X, w.Win, w.AtomClipboard, xproto.TimeCurrentTime)
 	}
@@ -601,7 +559,9 @@ func (w *Window) SetPrimary(text string) {
 	if text == "" {
 		return
 	}
+	w.clipMu.Lock()
 	w.primaryText = text
+	w.clipMu.Unlock()
 	_ = xproto.SetSelectionOwner(w.X, w.Win, xproto.AtomPrimary, xproto.TimeCurrentTime)
 }
 
@@ -609,11 +569,13 @@ func (w *Window) HandleSelectionRequest(e xproto.SelectionRequestEvent) {
 	var data []byte
 	var text string
 
+	w.clipMu.RLock()
 	if e.Selection == xproto.AtomPrimary {
 		text = w.primaryText
 	} else if e.Selection == w.AtomClipboard {
 		text = w.clipboardText
 	}
+	w.clipMu.RUnlock()
 
 	target := e.Target
 	property := e.Property
@@ -718,3 +680,99 @@ func (w *Window) HandleSelectionNotify(e xproto.SelectionNotifyEvent) []byte {
 
 	return reply.Value
 }
+
+func (w *Window) Events() <-chan Event {
+	return w.eventCh
+}
+
+func (w *Window) Paste() {
+	w.RequestPaste(w.AtomClipboard)
+}
+
+func (w *Window) PastePrimary() {
+	w.RequestPaste(xproto.AtomPrimary)
+}
+
+func (w *Window) eventLoop() {
+	for {
+		ev, err := w.X.WaitForEvent()
+		if ev == nil && err == nil {
+			close(w.eventCh)
+			return
+		}
+		if err != nil {
+			continue
+		}
+		switch e := ev.(type) {
+		case xproto.MotionNotifyEvent:
+			w.eventCh <- MotionNotifyEvent{
+				EventX: e.EventX,
+				EventY: e.EventY,
+				RootX:  e.RootX,
+				RootY:  e.RootY,
+				State:  e.State,
+			}
+		case xproto.ButtonPressEvent:
+			w.eventCh <- ButtonPressEvent{
+				Detail: uint8(e.Detail),
+				State:  e.State,
+				EventX: e.EventX,
+				EventY: e.EventY,
+				RootX:  e.RootX,
+				RootY:  e.RootY,
+			}
+		case xproto.ButtonReleaseEvent:
+			w.eventCh <- ButtonReleaseEvent{
+				Detail: uint8(e.Detail),
+				State:  e.State,
+				EventX: e.EventX,
+				EventY: e.EventY,
+				RootX:  e.RootX,
+				RootY:  e.RootY,
+			}
+		case xproto.KeyPressEvent:
+			var act ActionType
+			var b []byte
+			var ksym uint32
+			if w.keyHandler != nil {
+				ksym = uint32(w.keyHandler.KeySym(e))
+				b, act = w.keyHandler.Translate(e)
+			}
+			w.eventCh <- KeyPressEvent{
+				Detail: byte(e.Detail),
+				State:  e.State,
+				KeySym: ksym,
+				Bytes:  b,
+				Action: act,
+			}
+		case xproto.ConfigureNotifyEvent:
+			w.eventCh <- ConfigureNotifyEvent{
+				Width:  e.Width,
+				Height: e.Height,
+			}
+		case xproto.ExposeEvent:
+			w.eventCh <- ExposeEvent{}
+		case xproto.FocusOutEvent:
+			w.eventCh <- FocusOutEvent{}
+		case xproto.MappingNotifyEvent:
+			if w.keyHandler != nil {
+				_ = w.keyHandler.RefreshMapping(w.X)
+			}
+			w.eventCh <- MappingNotifyEvent{}
+		case xproto.SelectionRequestEvent:
+			w.HandleSelectionRequest(e)
+		case xproto.SelectionNotifyEvent:
+			val := w.HandleSelectionNotify(e)
+			if len(val) > 0 {
+				w.eventCh <- PasteNotifyEvent{Text: string(val)}
+			}
+		case xproto.SelectionClearEvent:
+			// selection clear - no-op
+		case xproto.ClientMessageEvent:
+			if e.Format == 32 && len(e.Data.Data32) > 0 && xproto.Atom(e.Data.Data32[0]) == w.AtomWmDeleteWindow {
+				w.eventCh <- CloseRequestEvent{}
+			}
+		}
+	}
+}
+

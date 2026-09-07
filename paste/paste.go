@@ -187,8 +187,15 @@ func TruncatePreview(text string, maxLines, maxCols int) (lines []string, totalL
 		l := all[i]
 		// Replace tabs with 4 spaces for display
 		l = strings.ReplaceAll(l, "\t", "    ")
-		if len(l) > maxCols {
-			lines[i] = l[:maxCols-3] + "..."
+		runes := []rune(l)
+		if len(runes) > maxCols {
+			if maxCols > 3 {
+				lines[i] = string(runes[:maxCols-3]) + "..."
+			} else if maxCols > 0 {
+				lines[i] = string(runes[:maxCols])
+			} else {
+				lines[i] = ""
+			}
 		} else {
 			lines[i] = l
 		}

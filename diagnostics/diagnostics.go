@@ -275,8 +275,9 @@ func isSafeOperation(cmd string, parts []string) bool {
 	return false
 }
 
-// extractActiveSegment extracts the currently active command segment from pipelines or chains (&&, ||, ;, |)
-func extractActiveSegment(input string) string {
+// splitCommandPrefix splits input into (prefix, activeSegment).
+// prefix preserves all preceding pipeline/chain commands, delimiters (&&, ||, ;, |), and spacing.
+func splitCommandPrefix(input string) (prefix string, activeSeg string) {
 	delims := []string{"&&", "||", ";", "|"}
 	lastIdx := -1
 	delimLen := 0
@@ -290,9 +291,21 @@ func extractActiveSegment(input string) string {
 	}
 
 	if lastIdx >= 0 && lastIdx+delimLen <= len(input) {
-		return strings.TrimSpace(input[lastIdx+delimLen:])
+		p := input[:lastIdx+delimLen]
+		rem := input[lastIdx+delimLen:]
+		trimmedRem := strings.TrimLeft(rem, " \t")
+		p += rem[:len(rem)-len(trimmedRem)]
+		return p, strings.TrimSpace(trimmedRem)
 	}
-	return strings.TrimSpace(input)
+
+	trimmed := strings.TrimLeft(input, " \t")
+	return input[:len(input)-len(trimmed)], strings.TrimSpace(trimmed)
+}
+
+// extractActiveSegment extracts the currently active command segment from pipelines or chains (&&, ||, ;, |)
+func extractActiveSegment(input string) string {
+	_, seg := splitCommandPrefix(input)
+	return seg
 }
 
 // unnestSudo removes sudo and common sudo flags, returning the underlying command
@@ -355,7 +368,7 @@ func Analyze(rawInput string) *Diagnostic {
 	}
 
 	// Get active segment in case of pipe or chained command
-	activeSeg := extractActiveSegment(trimmed)
+	prefix, activeSeg := splitCommandPrefix(trimmed)
 	if len(activeSeg) < 2 {
 		return nil
 	}
@@ -384,7 +397,7 @@ func Analyze(rawInput string) *Diagnostic {
 					Severity:   SeverityWarning,
 					Message:    fmt.Sprintf("'%s' usually requires root privileges", baseCmd),
 					Suggestion: fmt.Sprintf("Try: %s", fixedLine),
-					QuickFix:   fixedLine,
+					QuickFix:   prefix + fixedLine,
 				}
 			}
 		}
@@ -439,7 +452,7 @@ func Analyze(rawInput string) *Diagnostic {
 								Severity:   SeverityError,
 								Message:    fmt.Sprintf("Unknown %s subcommand '%s'", baseCmd, sub),
 								Suggestion: fmt.Sprintf("Did you mean '%s'?", match),
-								QuickFix:   fixedLine,
+								QuickFix:   prefix + fixedLine,
 							}
 						}
 					}
@@ -488,7 +501,7 @@ func Analyze(rawInput string) *Diagnostic {
 				Severity:   SeverityError,
 				Message:    fmt.Sprintf("Command '%s' not recognized", baseCmd),
 				Suggestion: fmt.Sprintf("Did you mean '%s'?", fix),
-				QuickFix:   fixedLine,
+				QuickFix:   prefix + fixedLine,
 			}
 		}
 	}
@@ -507,7 +520,7 @@ func Analyze(rawInput string) *Diagnostic {
 					Severity:   SeverityError,
 					Message:    fmt.Sprintf("Command '%s' not recognized", baseCmd),
 					Suggestion: fmt.Sprintf("Did you mean '%s'?", match),
-					QuickFix:   fixedLine,
+					QuickFix:   prefix + fixedLine,
 				}
 			}
 		}

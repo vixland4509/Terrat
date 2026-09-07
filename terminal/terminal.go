@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ const (
 	stateEscape
 	stateCSI
 	stateOSC
+	stateOSCEscape
 	stateCharset
 )
 
@@ -58,8 +60,9 @@ type Terminal struct {
 	csiPrivate bool
 	oscBuffer  []rune
 
-	title     string
-	TitleChan chan string
+	title        string
+	TitleChan    chan string
+	ResponseChan chan []byte
 
 	dirtyRows []bool
 	dirtyAll  bool
@@ -82,6 +85,7 @@ func New(cols, rows int) *Terminal {
 		scrollTop:     0,
 		scrollBottom:  rows - 1,
 		TitleChan:     make(chan string, 16),
+		ResponseChan:  make(chan []byte, 16),
 		dirtyRows:     make([]bool, rows),
 		dirtyAll:      true,
 	}
@@ -562,7 +566,7 @@ func (t *Terminal) processRune(r rune) {
 		case ']':
 			t.state = stateOSC
 			t.oscBuffer = nil
-		case '(':
+		case '(', ')', '*', '+':
 			t.state = stateCharset
 		case '7':
 			t.saveCursor()
@@ -603,11 +607,27 @@ func (t *Terminal) processRune(r rune) {
 		t.state = stateNormal
 
 	case stateOSC:
-		if r == '\a' || r == '\x1b' {
+		if r == '\a' {
+			t.executeOSC()
+			t.state = stateNormal
+		} else if r == '\x1b' {
+			t.state = stateOSCEscape
+		} else {
+			if len(t.oscBuffer) < 4096 {
+				t.oscBuffer = append(t.oscBuffer, r)
+			}
+		}
+
+	case stateOSCEscape:
+		if r == '\\' {
+			// Completed String Terminator (ST: ESC \)
 			t.executeOSC()
 			t.state = stateNormal
 		} else {
-			t.oscBuffer = append(t.oscBuffer, r)
+			// Not ST, flush OSC and treat r as part of new escape sequence
+			t.executeOSC()
+			t.state = stateEscape
+			t.processRune(r)
 		}
 	}
 }
@@ -652,6 +672,7 @@ func (t *Terminal) scrollUp(count int) {
 			copy(saved, grid[0])
 			t.scrollback = append(t.scrollback, saved)
 			if len(t.scrollback) > t.maxHistory {
+				t.scrollback[0] = nil
 				t.scrollback = t.scrollback[1:]
 			} else if t.scrollOff > 0 {
 				t.scrollOff++
@@ -765,6 +786,24 @@ func (t *Terminal) executeCSI(cmd rune) {
 		if t.cursorX < 0 {
 			t.cursorX = 0
 		}
+
+	case 'E':
+		n := arg(0, 1)
+		t.cursorY += n
+		if t.cursorY >= t.rows {
+			t.cursorY = t.rows - 1
+		}
+		t.cursorX = 0
+		t.markRowDirty(t.cursorY)
+
+	case 'F':
+		n := arg(0, 1)
+		t.cursorY -= n
+		if t.cursorY < 0 {
+			t.cursorY = 0
+		}
+		t.cursorX = 0
+		t.markRowDirty(t.cursorY)
 
 	case 'G':
 		col := arg(0, 1) - 1
@@ -953,6 +992,31 @@ func (t *Terminal) executeCSI(cmd rune) {
 
 	case 'm':
 		t.executeSGR(args)
+
+	case 'n':
+		// DSR (Device Status Report)
+		mode := arg(0, 0)
+		if mode == 6 {
+			// Report Cursor Position: CPR -> \x1b[row;colR (1-based)
+			resp := fmt.Sprintf("\x1b[%d;%dR", t.cursorY+1, t.cursorX+1)
+			select {
+			case t.ResponseChan <- []byte(resp):
+			default:
+			}
+		} else if mode == 5 {
+			// Status Report -> \x1b[0n (OK)
+			select {
+			case t.ResponseChan <- []byte("\x1b[0n"):
+			default:
+			}
+		}
+
+	case 'c':
+		// Primary Device Attributes (DA) -> identify as VT220
+		select {
+		case t.ResponseChan <- []byte("\x1b[?62;c"):
+		default:
+		}
 
 	case 'h', 'l':
 		enable := (cmd == 'h')

@@ -144,3 +144,46 @@ func TestAnalyzeTypos(t *testing.T) {
 		t.Fatalf("expected nil for valid command, got %+v", d)
 	}
 }
+
+func TestChainedCommandQuickFix(t *testing.T) {
+	cases := []struct {
+		input           string
+		expectedSuggest string
+		expectedFix     string
+	}{
+		{
+			input:           "echo \"hello\" && sl",
+			expectedSuggest: "Did you mean 'ls'?",
+			expectedFix:     "echo \"hello\" && ls",
+		},
+		{
+			input:           "cat file | gerp pattern",
+			expectedSuggest: "Did you mean 'grep'?",
+			expectedFix:     "cat file | grep pattern",
+		},
+		{
+			input:           "git status && git puch origin",
+			expectedSuggest: "Did you mean 'push'?",
+			expectedFix:     "git status && git push origin",
+		},
+		{
+			input:           "sl",
+			expectedSuggest: "Did you mean 'ls'?",
+			expectedFix:     "ls",
+		},
+	}
+
+	for _, c := range cases {
+		d := Analyze(c.input)
+		if d == nil {
+			t.Fatalf("expected diagnostic for %q, got nil", c.input)
+		}
+		if d.Suggestion != c.expectedSuggest {
+			t.Errorf("for %q: expected Suggestion %q, got %q", c.input, c.expectedSuggest, d.Suggestion)
+		}
+		if d.QuickFix != c.expectedFix {
+			t.Errorf("for %q: expected QuickFix %q, got %q", c.input, c.expectedFix, d.QuickFix)
+		}
+	}
+}
+

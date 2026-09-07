@@ -113,3 +113,24 @@ func TestSelectAll(t *testing.T) {
 	}
 }
 
+func TestWordSelectionReverseDrag(t *testing.T) {
+	term := New(80, 24)
+
+	sample := "apple banana cherry"
+	for i, r := range sample {
+		term.lines[0][i] = Cell{Char: r}
+	}
+
+	// Double-click on 'banana' (starts at 6, ends at 11)
+	term.SelectWord(8, 0)
+	// Drag backwards to 'apple' (col 2, row 0)
+	term.UpdateSelection(2, 0)
+
+	selected := term.GetSelectedText()
+	expected := "apple banana"
+	if selected != expected {
+		t.Fatalf("expected backwards word selection to be %q, got %q", expected, selected)
+	}
+}
+
+

@@ -42,10 +42,14 @@ release:
 	@echo "Building release binaries..."
 	GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=$(VERSION)" -o dist/$(BINARY)-linux-amd64 main.go
 	GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.Version=$(VERSION)" -o dist/$(BINARY)-linux-arm64 main.go
-	@echo "Packaging release tarballs..."
+	GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui -X main.Version=$(VERSION)" -o dist/$(BINARY)-windows-amd64.exe main.go
+	GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -ldflags="-s -w -H=windowsgui -X main.Version=$(VERSION)" -o dist/$(BINARY)-windows-arm64.exe main.go
+	@echo "Packaging release assets..."
 	@cd dist && tar -czf $(BINARY)-v$(VERSION)-linux-amd64.tar.gz $(BINARY)-linux-amd64
 	@cd dist && tar -czf $(BINARY)-v$(VERSION)-linux-arm64.tar.gz $(BINARY)-linux-arm64
-	@cd dist && sha256sum *.tar.gz > checksums.txt
+	@cd dist && zip -q $(BINARY)-v$(VERSION)-windows-amd64.zip $(BINARY)-windows-amd64.exe
+	@cd dist && zip -q $(BINARY)-v$(VERSION)-windows-arm64.zip $(BINARY)-windows-arm64.exe
+	@cd dist && sha256sum *.tar.gz *.zip > checksums.txt
 	@echo "Release assets ready in dist/:"
 	@ls -lh dist/
 
