@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=TerraTerminal
+GenericName=Terminal Emulator
+Comment=Lightweight pure Go terminal emulator for Linux
+Exec=/home/vixland/Documents/Terrat/terrat
+Icon=/home/vixland/Documents/Terrat/icon.png
+Terminal=false
+Categories=System;TerminalEmulator;Utility;
+Keywords=shell;prompt;command;commandline;cmd;terrat;
+StartupNotify=true
+StartupWMClass=terrat

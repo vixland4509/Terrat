@@ -1,0 +1,205 @@
+<p align="center">
+  <img src="icon.png?v=2" width="96" height="96" alt="TerraTerminal Logo">
+</p>
+
+<h1 align="center">TerraTerminal (<code>terrat</code>)</h1>
+
+<p align="center">
+  <b>A lightweight, frameless minimalist Linux terminal emulator written in pure Go.</b>
+  <br>
+  <i>Zero CGO &bull; Sub-5ms Cold Boot &bull; ~11MB Idle RAM &bull; Single Static Binary</i>
+</p>
+
+<p align="center">
+  <a href="#why-terrat">Why Terrat</a> &bull;
+  <a href="#features">Features</a> &bull;
+  <a href="#shortcuts">Shortcuts</a> &bull;
+  <a href="#configuration">Configuration</a> &bull;
+  <a href="#installation">Installation</a> &bull;
+  <a href="#benchmarks">Benchmarks</a>
+</p>
+
+---
+
+## Why Terrat?
+
+Most terminal emulators today fall into two frustrating extremes:
+1. **Web-bloated beasts** (Electron, WebAssembly, heavy webviews) that gobble 200MB–400MB of RAM just to show a shell prompt.
+2. **C/C++ legacy terminals** that require tangled dynamic linkers, fragile CGO bindings, or sprawling toolchains.
+
+**TerraTerminal (`terrat`)** takes a radically simpler path:
+- **100% Pure Go:** Directly communicates with the X11 display server through the raw wire protocol (`xgb`). Zero CGO, zero system library headaches.
+- **Microsecond cold boot:** Pops up on your screen in less than **5 milliseconds**.
+- **Flyweight memory footprint:** Stays under **~11MB RSS** in everyday use.
+- **Hardware-smooth visuals:** True double-buffering via server-side pixmaps completely eliminates window tearing and resize flicker.
+- **Built-in essentials:** Ships with the features developers actually use every day—tabs, find-in-buffer, clickable URLs, live font zoom, curated themes, and system dark-mode detection—without installing plugins.
+
+---
+
+## Features
+
+### 1. Frameless Custom Frame (CSD)
+- Clean, distraction-free window header with 1px hairline border.
+- Minimalist window control dots (macOS / Ghostty style): Close, Minimize, and Toggle Maximize.
+- Integrated micro-HUD displaying live terminal grid dimensions (e.g. `80x24`).
+- Full window movement by dragging anywhere on the header bar.
+- Interactive 8-direction edge and corner resizing with proper cursor morphing (`ResizeTop`, `ResizeBottomRight`, etc.).
+
+### 2. Native Multi-Tabs
+- Isolated sessions: each tab runs its own pseudo-terminal (PTY), terminal state machine, and command stream.
+- Sleek tab pills in the header bar showing the active process (`bash`, `nvim`, `htop`).
+- Mouse-interactive: click a tab to switch, click `×` to close, or click `+` to spawn a new session.
+- Seamless shell exit: closing a shell closes its tab; exiting the last tab cleanly exits the application.
+
+### 3. Live Font Zooming
+- Scale font size up or down in real time with `Ctrl+=` / `Ctrl+-` or `Ctrl + MouseWheel`.
+- In-memory glyph regeneration takes `<0.1ms` with zero disk I/O.
+- Window grid (`cols` / `rows`) automatically recalculates, and PTY sends `SIGWINCH` to running child processes without dropping active state.
+- Font preferences are automatically remembered and saved to config.
+
+### 4. Smart URL Detection & External Launcher
+- Automatically recognizes URLs (`http://`, `https://`) across visible terminal rows.
+- Holding `Ctrl` while hovering a link draws a clean underline and changes the cursor to a pointer (`XC_hand2`).
+- `Ctrl + Left Click` opens the link in your system's default browser via `xdg-open` in the background without blocking terminal execution.
+
+### 5. In-Buffer Search (Find)
+- Floating minimal search bar opened via `Ctrl+Shift+F`.
+- Live match highlighting directly on the canvas:
+  - **All matches:** Warm amber glow (`#e0af68`).
+  - **Active match:** Vivid emerald highlight (`#9ece6a`).
+- Real-time match counter badge (e.g. `(1/5)` or `(0/0)`).
+- Quick navigation using `Enter` (next) and `Shift+Enter` (previous).
+
+### 6. Interactive Preferences & Curated Themes
+- Floating modal accessible anytime via `Ctrl+,`, `Ctrl+Shift+P`, or by clicking the header HUD.
+- Five built-in color palettes:
+  - **Tokyo Night** (Dark &mdash; Iconic midnight blue)
+  - **Catppuccin Mocha** (Dark &mdash; Velvet charcoal)
+  - **Tokyo Day** (Light &mdash; Crisp sunlight paper)
+  - **Solarized Light** (Light &mdash; Warm parchment)
+  - **System Auto-Detect** (Follows your OS Dark/Light mode via XDG Desktop Portal / DBus / KDE / GNOME)
+- Live preview while navigating themes before saving.
+- Dynamic color remapping: instantly updates scrollback history, running apps, and clears screens without visual artifacting or dark patches.
+
+### 7. Window Opacity / Transparency
+- Native X11 composite transparency via `_NET_WM_WINDOW_OPACITY`.
+- Compatible with Picom, Mutter (GNOME), KWin (KDE), and Xfwm.
+- Default 95% opacity (`0.95`) for a subtle luxury look without sacrificing legibility.
+
+### 8. Intuitive Mouse Selection & Clipboard Integration
+- Drag left-click to select text with full block highlight.
+- **Double-click:** Selects whole word (including paths, symbols, and hostnames).
+- **Triple-click:** Selects entire row.
+- **Middle-click:** Pastes from `PRIMARY` selection.
+- **Smart Ctrl+C:** If text is selected, `Ctrl+C` copies to clipboard; if no text is selected, it sends standard `SIGINT` to interrupt the current process.
+
+---
+
+## Shortcuts
+
+### Tabs
+| Shortcut | Action |
+| :--- | :--- |
+| `Ctrl + Shift + T` | Open new tab |
+| `Ctrl + Shift + W` | Close active tab |
+| `Ctrl + Tab` / `Ctrl + PageDown` | Switch to next tab |
+| `Ctrl + Shift + Tab` / `Ctrl + PageUp` | Switch to previous tab |
+| `Alt + 1` .. `Alt + 9` | Jump directly to tab 1 through 9 |
+
+### Search & Links
+| Shortcut | Action |
+| :--- | :--- |
+| `Ctrl + Shift + F` | Toggle in-buffer search bar |
+| `Enter` / `Shift + Enter` | Jump to next / previous search match |
+| `Esc` | Close search bar & clear highlights |
+| `Ctrl + Hover` | Underline detected URL |
+| `Ctrl + Left Click` | Open hovered URL in default web browser |
+
+### Font Zoom
+| Shortcut | Action |
+| :--- | :--- |
+| `Ctrl + =` / `Ctrl + +` | Increase font size by 1pt |
+| `Ctrl + -` / `Ctrl + _` | Decrease font size by 1pt |
+| `Ctrl + 0` | Reset font size to default (13pt) |
+| `Ctrl + Wheel Up` / `Down` | Zoom in / out with mouse wheel |
+
+### Preferences & Clipboard
+| Shortcut | Action |
+| :--- | :--- |
+| `Ctrl + ,` / `Ctrl + Shift + P` | Open / close Preferences modal |
+| `Ctrl + Shift + C` (or `Ctrl + C` with selection) | Copy selected text to clipboard |
+| `Ctrl + Shift + V` / `Shift + Insert` | Paste text from clipboard |
+| `Shift + PageUp` / `PageDown` | Scroll terminal history up / down |
+
+---
+
+## Benchmarks
+
+Tested on Linux 6.x (X11 / Pure Go build):
+
+| Metric | TerraTerminal (`terrat`) | Default System Terminal (Konsole) |
+| :--- | :--- | :--- |
+| **Cold Startup Time** | **~4.6 ms** (0.0046s) | ~40 – 120 ms |
+| **Idle Memory (RSS)** | **~11 MB** | ~168 MB *(15x heavier)* |
+| **Idle CPU Usage** | **0.00%** (Full kernel sleep) | 0.2% – 1.5% |
+| **Binary Size** | **3.7 MB** (Single self-contained) | Multi-MB dynamic libraries |
+| **External Dependencies** | **None** (Zero CGO / Pure Go) | Qt / GTK / C++ runtimes |
+
+---
+
+## Configuration
+
+Settings are saved automatically in `~/.config/terrat/config.json`:
+
+```json
+{
+  "theme": "auto",
+  "font_size": 13.0,
+  "opacity": 0.95
+}
+```
+
+- `theme`: `"auto"`, `"tokyo-night"`, `"catppuccin-mocha"`, `"tokyo-day"`, or `"solarized-light"`.
+- `font_size`: Floating-point font size in points (`8.0` to `32.0`).
+- `opacity`: Window opacity from `0.20` to `1.0` (compositor required for transparency).
+
+---
+
+## Installation
+
+### Prerequisites
+- Linux with an X11 display server (or XWayland).
+- Go 1.21+ (only required for building from source).
+
+### Build from Source
+```bash
+# Clone the repository
+git clone https://github.com/vixland4509/Terrat.git
+cd Terrat
+
+# Build binary
+make build
+
+# Run immediately
+./terrat
+```
+
+### Install System-Wide
+```bash
+# Installs to ~/go/bin/terrat, copies circular icon, and registers desktop launcher
+make install
+```
+
+### Launch with Custom Command
+```bash
+# Launch a specific utility directly
+terrat -e htop
+terrat -e nvim
+terrat -e /bin/zsh
+```
+
+---
+
+## License
+
+Open source under the [MIT License](LICENSE).

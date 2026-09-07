@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #13141c;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #292e42;
+    border-radius: 2px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3b4261;
+  }
+}
+
+/* Custom hairline borders */
+.hairline-b {
+  border-bottom: 1px solid #292e42;
+}
+.hairline-r {
+  border-right: 1px solid #292e42;
+}
+.hairline-l {
+  border-left: 1px solid #292e42;
+}
+.hairline-t {
+  border-top: 1px solid #292e42;
+}
+.hairline-all {
+  border: 1px solid #292e42;
+}
+
+/* Subtle grid texture overlay */
+.bg-grid-pattern {
+  background-image: linear-gradient(to right, rgba(41, 46, 66, 0.25) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(41, 46, 66, 0.25) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
