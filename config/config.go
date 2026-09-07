@@ -7,20 +7,26 @@ import (
 )
 
 type Config struct {
-	Theme       string  `json:"theme"`
-	FontSize    float64 `json:"font_size"`
-	Opacity     float64 `json:"opacity"`
-	GhostText   bool    `json:"ghost_text"`
-	Diagnostics bool    `json:"diagnostics"`
+	Theme                 string  `json:"theme"`
+	FontSize              float64 `json:"font_size"`
+	Opacity               float64 `json:"opacity"`
+	GhostText             bool    `json:"ghost_text"`
+	Diagnostics           bool    `json:"diagnostics"`
+	ConfirmMultilinePaste bool    `json:"confirm_multiline_paste"`
+	SanitizePaste         bool    `json:"sanitize_paste"`
+	BracketedPaste        bool    `json:"bracketed_paste"`
 }
 
 func DefaultConfig() *Config {
 	return &Config{
-		Theme:       "auto",
-		FontSize:    13.0,
-		Opacity:     0.95,
-		GhostText:   true,
-		Diagnostics: true,
+		Theme:                 "auto",
+		FontSize:              13.0,
+		Opacity:               0.95,
+		GhostText:             true,
+		Diagnostics:           true,
+		ConfirmMultilinePaste: true,
+		SanitizePaste:         true,
+		BracketedPaste:        true,
 	}
 }
 

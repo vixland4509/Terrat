@@ -17,6 +17,7 @@ import (
 	"terrat/autosuggest"
 	"terrat/config"
 	"terrat/diagnostics"
+	"terrat/paste"
 	"terrat/platform"
 	"terrat/pty"
 	"terrat/render"
@@ -300,11 +301,17 @@ func main() {
 	var searchMatches []render.SearchMatch
 	activeSearchIdx := 0
 
+	isPasteModalOpen := false
+	pendingPasteText := ""
+	var pendingPasteWarnings []string
+	pendingPasteIsURL := false
+	pendingPasteIsLarge := false
+
 	var hoveredURL *render.URLRange
 
 	suggestEngine := autosuggest.NewEngine()
 	updateGhostText = func() {
-		if !appConfig.GhostText || tabs[activeTabIdx].Term.IsAlt() || isSearchOpen || isPrefOpen {
+		if !appConfig.GhostText || tabs[activeTabIdx].Term.IsAlt() || isSearchOpen || isPrefOpen || isPasteModalOpen {
 			activeGhostText = ""
 			return
 		}
@@ -317,7 +324,7 @@ func main() {
 	}
 
 	updateDiagnostics = func() {
-		if !appConfig.Diagnostics || tabs[activeTabIdx].Term.IsAlt() || isSearchOpen || isPrefOpen {
+		if !appConfig.Diagnostics || tabs[activeTabIdx].Term.IsAlt() || isSearchOpen || isPrefOpen || isPasteModalOpen {
 			activeDiag = nil
 			return
 		}
@@ -406,6 +413,73 @@ func main() {
 		triggerRedraw()
 	}
 
+	var doWritePastedText func(text string)
+	var handlePastedData func(pastedBytes []byte)
+
+	doWritePastedText = func(text string) {
+		if len(tabs) == 0 || activeTabIdx >= len(tabs) {
+			return
+		}
+		activeTerm := tabs[activeTabIdx].Term
+		activePTY := tabs[activeTabIdx].PTY
+		var toSend []byte
+		if appConfig.BracketedPaste && activeTerm.BracketedPaste() {
+			toSend = []byte("\x1b[200~" + text + "\x1b[201~")
+		} else {
+			toSend = []byte(text)
+		}
+		_, _ = activePTY.Write(toSend)
+		activeTerm.ResetScroll()
+		triggerRedraw()
+	}
+
+	handlePastedData = func(pastedBytes []byte) {
+		if len(pastedBytes) == 0 || len(tabs) == 0 || activeTabIdx >= len(tabs) {
+			return
+		}
+		raw := string(pastedBytes)
+		var text string
+		var warnings []string
+
+		if appConfig.SanitizePaste {
+			res := paste.Sanitize(raw)
+			text = res.Sanitized
+			warnings = res.Warnings
+		} else {
+			text = raw
+		}
+
+		if text == "" {
+			return
+		}
+
+		activeTerm := tabs[activeTabIdx].Term
+
+		// In alternate screen mode (e.g. vim, nano, htop, less), don't disrupt full-screen apps
+		if activeTerm.IsAlt() {
+			doWritePastedText(text)
+			return
+		}
+
+		isURL := paste.IsURL(text)
+		isLarge := paste.IsLargePayload(text)
+		isMulti := paste.IsMultiline(text)
+		hasDangerousURL := isURL && paste.HasDangerousShellChars(text)
+
+		needConfirmation := appConfig.ConfirmMultilinePaste && (isMulti || isLarge || hasDangerousURL || len(warnings) > 0)
+		if needConfirmation {
+			isPasteModalOpen = true
+			pendingPasteText = text
+			pendingPasteWarnings = warnings
+			pendingPasteIsURL = isURL
+			pendingPasteIsLarge = isLarge
+			triggerRedraw()
+			return
+		}
+
+		doWritePastedText(text)
+	}
+
 	renderScreen := func() {
 		if len(tabs) == 0 {
 			return
@@ -434,6 +508,10 @@ func main() {
 
 		if isPrefOpen {
 			canvas.RenderPreferencesModal(activeTerm.Theme(), prefIndex, prefOptions, savedThemeID)
+		}
+
+		if isPasteModalOpen {
+			canvas.RenderPasteConfirmModal(activeTerm.Theme(), pendingPasteText, pendingPasteWarnings, pendingPasteIsURL, pendingPasteIsLarge)
 		}
 		win.Blit(canvas.Pixels, currentWidth, currentHeight)
 	}
@@ -644,6 +722,14 @@ func main() {
 			}
 
 			if e.Detail == 1 {
+				if isPasteModalOpen {
+					isPasteModalOpen = false
+					pendingPasteText = ""
+					pendingPasteWarnings = nil
+					triggerRedraw()
+					continue
+				}
+
 				if isCtrl && hoveredURL != nil {
 					_ = exec.Command("xdg-open", hoveredURL.URL).Start()
 					continue
@@ -890,6 +976,35 @@ func main() {
 					continue
 				}
 
+				if isPasteModalOpen {
+					switch keysym {
+					case 0xff1b, 'c', 'C', 'n', 'N': // Escape, 'c', 'n' -> Cancel
+						isPasteModalOpen = false
+						pendingPasteText = ""
+						pendingPasteWarnings = nil
+						triggerRedraw()
+					case 0xff0d, 'p', 'P', 'y', 'Y': // Enter, 'p', 'y' -> Paste as-is
+						textToPaste := pendingPasteText
+						isPasteModalOpen = false
+						pendingPasteText = ""
+						pendingPasteWarnings = nil
+						doWritePastedText(textToPaste)
+					case 's', 'S': // 's' -> Flatten to single line
+						textToPaste := paste.FlattenToSingleLine(pendingPasteText)
+						isPasteModalOpen = false
+						pendingPasteText = ""
+						pendingPasteWarnings = nil
+						doWritePastedText(textToPaste)
+					case 'q', 'Q': // 'q' -> Quote URL / argument
+						textToPaste := paste.QuoteURL(pendingPasteText)
+						isPasteModalOpen = false
+						pendingPasteText = ""
+						pendingPasteWarnings = nil
+						doWritePastedText(textToPaste)
+					}
+					continue
+				}
+
 				if isPrefOpen {
 					switch keysym {
 					case 0xff52, 'k', 'K':
@@ -1093,6 +1208,8 @@ func main() {
 						win.SetClipboard(activeTerm.GetSelectedText())
 						activeTerm.ClearSelection()
 						triggerRedraw()
+					} else if len(data) == 1 && data[0] == 0x16 && !activeTerm.IsAlt() {
+						win.RequestPaste(win.AtomClipboard)
 					} else {
 						// Ghost text completion: when Right Arrow (0xff53) or Tab (0xff09) is pressed with an active suggestion
 						if activeGhostText != "" && !activeTerm.IsAlt() {
@@ -1171,9 +1288,7 @@ func main() {
 		case xproto.SelectionNotifyEvent:
 			pastedBytes := win.HandleSelectionNotify(e)
 			if len(pastedBytes) > 0 {
-				_, _ = activePTY.Write(pastedBytes)
-				activeTerm.ResetScroll()
-				triggerRedraw()
+				handlePastedData(pastedBytes)
 			}
 
 		case xproto.SelectionClearEvent:

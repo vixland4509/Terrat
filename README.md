@@ -90,12 +90,16 @@ Most terminal emulators today fall into two frustrating extremes:
 - Compatible with Picom, Mutter (GNOME), KWin (KDE), and Xfwm.
 - Default 95% opacity (`0.95`) for a subtle luxury look without sacrificing legibility.
 
-### 8. Intuitive Mouse Selection & Clipboard Integration
+### 8. Intuitive Mouse Selection & Smart Clipboard System
 - Drag left-click to select text with full block highlight.
 - **Double-click:** Selects whole word (including paths, symbols, and hostnames).
 - **Triple-click:** Selects entire row.
 - **Middle-click:** Pastes from `PRIMARY` selection.
 - **Smart Ctrl+C:** If text is selected, `Ctrl+C` copies to clipboard; if no text is selected, it sends standard `SIGINT` to interrupt the current process.
+- **Smart Ctrl+V:** Pastes from clipboard in normal shell mode, while intelligently preserving `Ctrl+V` for visual-block selection inside full-screen editors (`vim`, `nano`).
+- **Bracketed Paste Mode (DECSET 2004):** Prevents staircase effect and broken indentation in Python REPLs, Node, and shells by wrapping pasted streams in standard terminal boundary markers (`\e[200~` ... `\e[201~`).
+- **Multiline Paste Safety Review:** Detects dangerous multi-line paste payloads that would execute commands immediately, presenting an interactive confirmation modal with syntax preview and options to paste as-is, flatten to single-line, or quote.
+- **Anti-Pastejacking Sanitization:** Automatically strips malicious ANSI escape sequences, raw control codes, zero-width spaces, and bidirectional Unicode overrides before executing.
 
 ### 9. Smart Inline Ghost Text (Fish-like Autosuggestions)
 - Real-time command completion suggestions drawn directly in front of the cursor in subtle muted gray.
@@ -112,6 +116,17 @@ Most terminal emulators today fall into two frustrating extremes:
 ---
 
 ## Shortcuts
+
+### Safe Paste & Clipboard
+| Shortcut | Action |
+| :--- | :--- |
+| `Ctrl + V` (in shell) / `Ctrl + Shift + V` / `Shift + Insert` | Paste text from clipboard |
+| `Enter` / `P` (in Paste Modal) | Confirm and paste all lines as-is |
+| `S` (in Paste Modal) | Flatten multi-line commands to safe single-line |
+| `Q` (in Paste Modal) | Quote text (e.g. URLs with `&` or `?`) |
+| `Esc` / `C` (in Paste Modal) | Cancel paste safely |
+| `Ctrl + Shift + C` (or `Ctrl + C` with selection) | Copy selected text to clipboard |
+| `Middle Click` | Paste from X11 `PRIMARY` selection |
 
 ### Autosuggest & Diagnostics
 | Shortcut | Action |
@@ -181,7 +196,10 @@ Settings are saved automatically in `~/.config/terrat/config.json`:
   "font_size": 13.0,
   "opacity": 0.95,
   "ghost_text": true,
-  "diagnostics": true
+  "diagnostics": true,
+  "confirm_multiline_paste": true,
+  "sanitize_paste": true,
+  "bracketed_paste": true
 }
 ```
 
@@ -190,6 +208,9 @@ Settings are saved automatically in `~/.config/terrat/config.json`:
 - `opacity`: Window opacity from `0.20` to `1.0` (compositor required for transparency).
 - `ghost_text`: Enable/disable inline command autosuggestions (`true` or `false`).
 - `diagnostics`: Enable/disable real-time typo diagnostics and linting (`true` or `false`).
+- `confirm_multiline_paste`: Interactive confirmation modal before executing multi-line paste (`true` or `false`).
+- `sanitize_paste`: Strip malicious ANSI escape codes, zero-width spaces, and bidi overrides (`true` or `false`).
+- `bracketed_paste`: Wrap pasted text in DECSET 2004 bracketed paste markers for safe REPL indentation (`true` or `false`).
 
 ---
 

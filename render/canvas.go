@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"strings"
 	"terrat/terminal"
 )
 
@@ -563,4 +564,158 @@ func (c *Canvas) RenderSearchBar(th *terminal.Theme, query string, matchIdx, tot
 	}
 
 	return barX, barY, barW, barH
+}
+
+func (c *Canvas) RenderPasteConfirmModal(th *terminal.Theme, content string, warnings []string, isURL bool, isLarge bool) (modalX, modalY, modalW, modalH int) {
+	charW := c.fontEngine.CharWidth()
+	charH := c.fontEngine.CharHeight()
+
+	allLines := strings.Split(content, "\n")
+	totalLines := len(allLines)
+
+	maxPreviewLines := 6
+	previewLines := allLines
+	moreLinesCount := 0
+	if len(previewLines) > maxPreviewLines {
+		previewLines = allLines[:maxPreviewLines-1]
+		moreLinesCount = totalLines - (maxPreviewLines - 1)
+	}
+
+	previewRowH := charH + 4
+	numDisplayRows := len(previewLines)
+	if moreLinesCount > 0 {
+		numDisplayRows++
+	}
+	if numDisplayRows == 0 {
+		numDisplayRows = 1
+	}
+
+	headerH := 36
+	bannerH := 28
+	previewBoxH := numDisplayRows*previewRowH + 16
+	footerH := 36
+	modalH = headerH + bannerH + previewBoxH + footerH + 16
+
+	modalW = 560
+	if modalW > c.Width-40 {
+		modalW = c.Width - 40
+	}
+	if modalH > c.Height-40 {
+		modalH = c.Height - 40
+	}
+
+	modalX = (c.Width - modalW) / 2
+	modalY = (c.Height - modalH) / 2
+
+	modalBGPixel := th.HeaderBG.ToPixel()
+	modalHeaderBGPixel := th.BG.ToPixel()
+	borderPixel := th.Border.ToPixel()
+	badgeTextPixel := th.BadgeText.ToPixel()
+	mutedTextPixel := th.MutedText.ToPixel()
+	fgPixel := th.FG.ToPixel()
+	warnPixel := th.MinDot.ToPixel() // Amber
+	if len(warnings) > 0 {
+		warnPixel = th.CloseDot.ToPixel() // Red
+	}
+
+	// 1. Modal background and frame
+	FillRect(c.Pixels, c.Stride, modalX, modalY, modalW, modalH, modalBGPixel)
+
+	// 2. Header
+	FillRect(c.Pixels, c.Stride, modalX, modalY, modalW, headerH, modalHeaderBGPixel)
+	DrawHLine(c.Pixels, c.Stride, modalX, modalY+headerH-1, modalW, th.HeaderLine.ToPixel())
+
+	dotSize := 8
+	dotX := modalX + 14
+	dotY := modalY + (headerH-dotSize)/2
+	FillRect(c.Pixels, c.Stride, dotX, dotY, dotSize, dotSize, warnPixel)
+
+	titleStr := "PASTE CONFIRMATION // SAFE REVIEW"
+	c.fontEngine.DrawString(c.Pixels, c.Stride, dotX+dotSize+10, modalY+(headerH-charH)/2, titleStr, badgeTextPixel, modalHeaderBGPixel, true)
+
+	metaStr := fmt.Sprintf("[%d lines • %d B]", totalLines, len(content))
+	metaX := modalX + modalW - len(metaStr)*charW - 14
+	if metaX > dotX+dotSize+10+len(titleStr)*charW+8 {
+		c.fontEngine.DrawString(c.Pixels, c.Stride, metaX, modalY+(headerH-charH)/2, metaStr, mutedTextPixel, modalHeaderBGPixel, false)
+	}
+
+	// 3. Safety Warning Banner
+	bannerY := modalY + headerH + 6
+	bannerX := modalX + 14
+	bannerW := modalW - 28
+	FillRect(c.Pixels, c.Stride, bannerX, bannerY, bannerW, bannerH, modalHeaderBGPixel)
+	DrawRectBorder(c.Pixels, c.Stride, bannerX, bannerY, bannerW, bannerH, warnPixel)
+
+	bannerMsg := "Multiline paste detected: commands will execute immediately without confirmation!"
+	if len(warnings) > 0 {
+		bannerMsg = "! " + warnings[0]
+	} else if isLarge {
+		bannerMsg = "! Large payload detected: pasting may freeze or slow the shell!"
+	}
+	maxBannerChars := (bannerW - 20) / charW
+	if len(bannerMsg) > maxBannerChars && maxBannerChars > 3 {
+		bannerMsg = bannerMsg[:maxBannerChars-3] + "..."
+	}
+	c.fontEngine.DrawString(c.Pixels, c.Stride, bannerX+10, bannerY+(bannerH-charH)/2, bannerMsg, warnPixel, modalHeaderBGPixel, true)
+
+	// 4. Preview Box
+	boxX := modalX + 14
+	boxY := bannerY + bannerH + 8
+	boxW := modalW - 28
+	boxH := modalH - (boxY - modalY) - footerH - 10
+	if boxH < 30 {
+		boxH = 30
+	}
+	FillRect(c.Pixels, c.Stride, boxX, boxY, boxW, boxH, modalHeaderBGPixel)
+	DrawRectBorder(c.Pixels, c.Stride, boxX, boxY, boxW, boxH, borderPixel)
+
+	maxLineChars := (boxW - 48) / charW
+	if maxLineChars < 10 {
+		maxLineChars = 10
+	}
+
+	rowStartY := boxY + 8
+	for i, l := range previewLines {
+		lineY := rowStartY + i*previewRowH
+		if lineY+charH > boxY+boxH {
+			break
+		}
+		numStr := fmt.Sprintf("%2d ", i+1)
+		c.fontEngine.DrawString(c.Pixels, c.Stride, boxX+10, lineY, numStr, mutedTextPixel, modalHeaderBGPixel, false)
+
+		cleanL := strings.ReplaceAll(l, "\t", "    ")
+		if len(cleanL) > maxLineChars {
+			cleanL = cleanL[:maxLineChars-3] + "..."
+		}
+		c.fontEngine.DrawString(c.Pixels, c.Stride, boxX+10+len(numStr)*charW, lineY, cleanL, fgPixel, modalHeaderBGPixel, false)
+	}
+
+	if moreLinesCount > 0 {
+		moreY := rowStartY + len(previewLines)*previewRowH
+		if moreY+charH <= boxY+boxH {
+			moreStr := fmt.Sprintf("... (+%d more lines) ...", moreLinesCount)
+			c.fontEngine.DrawString(c.Pixels, c.Stride, boxX+24, moreY, moreStr, mutedTextPixel, modalHeaderBGPixel, false)
+		}
+	}
+
+	// 5. Footer action hints
+	footerY := modalY + modalH - footerH
+	DrawHLine(c.Pixels, c.Stride, modalX, footerY, modalW, th.HeaderLine.ToPixel())
+
+	hints := "[ENTER] Paste All   [S] Single Line"
+	if isURL {
+		hints += "   [Q] Quoted"
+	}
+	hints += "   [ESC] Cancel"
+
+	hintsX := modalX + (modalW-len(hints)*charW)/2
+	if hintsX < modalX+12 {
+		hintsX = modalX + 12
+	}
+	c.fontEngine.DrawString(c.Pixels, c.Stride, hintsX, footerY+(footerH-charH)/2, hints, mutedTextPixel, modalBGPixel, false)
+
+	// 6. Outer Border
+	DrawRectBorder(c.Pixels, c.Stride, modalX, modalY, modalW, modalH, borderPixel)
+
+	return modalX, modalY, modalW, modalH
 }

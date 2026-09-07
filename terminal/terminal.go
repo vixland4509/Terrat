@@ -31,6 +31,8 @@ type Terminal struct {
 	altLines [][]Cell
 	isAlt    bool
 
+	bracketedPaste bool
+
 	cursorX       int
 	cursorY       int
 	cursorVisible bool
@@ -159,6 +161,16 @@ func (t *Terminal) IsAlt() bool {
 
 func (t *Terminal) IsAltLocked() bool {
 	return t.isAlt
+}
+
+func (t *Terminal) BracketedPaste() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.bracketedPaste
+}
+
+func (t *Terminal) BracketedPasteLocked() bool {
+	return t.bracketedPaste
 }
 
 func (t *Terminal) ScrollOff() int {
@@ -802,6 +814,8 @@ func (t *Terminal) executeCSI(cmd rune) {
 			case 1049, 47:
 				t.isAlt = enable
 				t.dirtyAll = true
+			case 2004:
+				t.bracketedPaste = enable
 			}
 		}
 	}
