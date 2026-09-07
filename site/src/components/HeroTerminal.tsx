@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Terminal as TerminalIcon, Search, ExternalLink, Plus, X, ArrowRight } from 'lucide-react';
+import { Terminal as TerminalIcon, Search, ExternalLink, Plus, X, ArrowRight, AlertTriangle } from 'lucide-react';
 
 interface HistoryItem {
   cmd: string;
@@ -133,6 +133,20 @@ export const HeroTerminal: React.FC = () => {
         {/* Hero Title & Grounded Description */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-end mb-16">
           <div className="lg:col-span-8">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-[2px] bg-[#e0af68]/10 border border-[#e0af68]/30 text-[#e0af68] text-xs font-mono mb-6">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              <span>
+                <strong>Under Active Development:</strong> Terrat is evolving rapidly and may contain bugs.{' '}
+                <a
+                  href="https://github.com/vixland4509/Terrat/issues"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-white transition-colors"
+                >
+                  Report issues on GitHub &rarr;
+                </a>
+              </span>
+            </div>
             <h1 className="text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-white leading-[1.05] mb-6">
               A lightweight Linux terminal, <br />
               <span className="text-[#7aa2f7]">written in pure Go.</span>

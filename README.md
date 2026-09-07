@@ -19,6 +19,10 @@
   <a href="#benchmarks">Benchmarks</a>
 </p>
 
+> [!NOTE]  
+> **Terrat is currently under active development.**  
+> You might encounter bugs, rough edges, or missing terminal sequences. If you run into any issues or have suggestions, please feel free to [open an issue on GitHub](https://github.com/vixland4509/Terrat/issues)! Contributions and bug reports are very welcome.
+
 ---
 
 ## Why Terrat?

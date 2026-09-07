@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Copy, Check, Terminal, Download, Keyboard, Settings } from 'lucide-react';
+import { Copy, Check, Terminal, Download, Keyboard, Settings, Bug } from 'lucide-react';
 
 export const InstallSection: React.FC = () => {
   const [copiedTab, setCopiedTab] = useState<string | null>(null);
@@ -106,6 +106,29 @@ cd Terrat &amp;&amp; make install
               Installs to <code>~/.local/bin/terrat</code> and registers in application menu.
             </div>
           </div>
+        </div>
+
+        {/* Development & Bug Reports Callout */}
+        <div className="border border-[#e0af68]/30 bg-[#e0af68]/5 rounded-[2px] p-5 mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 font-mono text-xs">
+          <div className="flex items-start gap-3">
+            <Bug className="w-4 h-4 text-[#e0af68] shrink-0 mt-0.5" />
+            <div>
+              <div className="text-[#e0af68] font-bold uppercase tracking-wider mb-1">
+                Under Active Development &bull; Found a Bug?
+              </div>
+              <p className="text-[#a9b1d6] leading-relaxed">
+                Terrat is in active development. If you encounter crashes, rendering artifacts, or unexpected behavior, please report them on GitHub!
+              </p>
+            </div>
+          </div>
+          <a
+            href="https://github.com/vixland4509/Terrat/issues"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3.5 py-2 bg-[#e0af68]/15 hover:bg-[#e0af68]/25 text-[#e0af68] hover:text-white border border-[#e0af68]/40 rounded-[2px] transition-all shrink-0 font-semibold"
+          >
+            Open GitHub Issue &rarr;
+          </a>
         </div>
 
         {/* Configuration snippet */}
