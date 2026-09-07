@@ -82,6 +82,8 @@ func New(cols, rows int) *Terminal {
 		theme:         th,
 		currFG:        ColorDefaultFG,
 		currBG:        ColorDefaultBG,
+		savedFG:       ColorDefaultFG,
+		savedBG:       ColorDefaultBG,
 		scrollTop:     0,
 		scrollBottom:  rows - 1,
 		TitleChan:     make(chan string, 16),
@@ -99,6 +101,23 @@ func New(cols, rows int) *Terminal {
 	}
 
 	return t
+}
+
+func (t *Terminal) emptyCell() Cell {
+	return Cell{
+		Char: ' ',
+		FG:   t.currFG,
+		BG:   t.currBG,
+	}
+}
+
+func (t *Terminal) emptyRow() []Cell {
+	row := make([]Cell, t.cols)
+	cell := t.emptyCell()
+	for i := range row {
+		row[i] = cell
+	}
+	return row
 }
 
 func (t *Terminal) makeRow() []Cell {
@@ -591,7 +610,11 @@ func (t *Terminal) processRune(r rune) {
 		}
 		if (r >= '0' && r <= '9') || r == ';' {
 			if len(t.csiParams) == 0 {
-				t.csiParams = append(t.csiParams, string(r))
+				if r == ';' {
+					t.csiParams = []string{"", ""}
+				} else {
+					t.csiParams = []string{string(r)}
+				}
 			} else {
 				last := len(t.csiParams) - 1
 				if r == ';' {
@@ -842,25 +865,25 @@ func (t *Terminal) executeCSI(cmd rune) {
 		switch mode {
 		case 0:
 			for c := t.cursorX; c < t.cols; c++ {
-				grid[t.cursorY][c] = EmptyCell()
+				grid[t.cursorY][c] = t.emptyCell()
 			}
 			t.markRowDirty(t.cursorY)
 			for r := t.cursorY + 1; r < t.rows; r++ {
-				grid[r] = t.makeRow()
+				grid[r] = t.emptyRow()
 				t.markRowDirty(r)
 			}
 		case 1:
 			for r := 0; r < t.cursorY; r++ {
-				grid[r] = t.makeRow()
+				grid[r] = t.emptyRow()
 				t.markRowDirty(r)
 			}
 			for c := 0; c <= t.cursorX && c < t.cols; c++ {
-				grid[t.cursorY][c] = EmptyCell()
+				grid[t.cursorY][c] = t.emptyCell()
 			}
 			t.markRowDirty(t.cursorY)
 		case 2:
 			for r := 0; r < t.rows; r++ {
-				grid[r] = t.makeRow()
+				grid[r] = t.emptyRow()
 				t.markRowDirty(r)
 			}
 			t.dirtyAll = true
@@ -878,14 +901,16 @@ func (t *Terminal) executeCSI(cmd rune) {
 		switch mode {
 		case 0:
 			for c := t.cursorX; c < t.cols; c++ {
-				grid[t.cursorY][c] = EmptyCell()
+				grid[t.cursorY][c] = t.emptyCell()
 			}
 		case 1:
 			for c := 0; c <= t.cursorX && c < t.cols; c++ {
-				grid[t.cursorY][c] = EmptyCell()
+				grid[t.cursorY][c] = t.emptyCell()
 			}
 		case 2:
-			grid[t.cursorY] = t.makeRow()
+			for c := 0; c < t.cols; c++ {
+				grid[t.cursorY][c] = t.emptyCell()
+			}
 		}
 		t.markRowDirty(t.cursorY)
 
@@ -911,7 +936,7 @@ func (t *Terminal) executeCSI(cmd rune) {
 				grid[r] = grid[r-1]
 				t.markRowDirty(r)
 			}
-			grid[t.scrollTop] = t.makeRow()
+			grid[t.scrollTop] = t.emptyRow()
 			t.markRowDirty(t.scrollTop)
 		}
 
@@ -922,7 +947,7 @@ func (t *Terminal) executeCSI(cmd rune) {
 			if c-n >= t.cursorX {
 				row[c] = row[c-n]
 			} else {
-				row[c] = EmptyCell()
+				row[c] = t.emptyCell()
 			}
 		}
 		t.markRowDirty(t.cursorY)
@@ -931,7 +956,7 @@ func (t *Terminal) executeCSI(cmd rune) {
 		n := arg(0, 1)
 		row := grid[t.cursorY]
 		for c := t.cursorX; c < t.cursorX+n && c < t.cols; c++ {
-			row[c] = EmptyCell()
+			row[c] = t.emptyCell()
 		}
 		t.markRowDirty(t.cursorY)
 
@@ -949,7 +974,7 @@ func (t *Terminal) executeCSI(cmd rune) {
 					grid[r] = grid[r-1]
 					t.markRowDirty(r)
 				}
-				grid[t.cursorY] = t.makeRow()
+				grid[t.cursorY] = t.emptyRow()
 				t.markRowDirty(t.cursorY)
 			}
 		}
@@ -962,7 +987,7 @@ func (t *Terminal) executeCSI(cmd rune) {
 					grid[r] = grid[r+1]
 					t.markRowDirty(r)
 				}
-				grid[t.scrollBottom] = t.makeRow()
+				grid[t.scrollBottom] = t.emptyRow()
 				t.markRowDirty(t.scrollBottom)
 			}
 		}
@@ -974,7 +999,7 @@ func (t *Terminal) executeCSI(cmd rune) {
 			if c+n < t.cols {
 				row[c] = row[c+n]
 			} else {
-				row[c] = EmptyCell()
+				row[c] = t.emptyCell()
 			}
 		}
 		t.markRowDirty(t.cursorY)
@@ -989,6 +1014,9 @@ func (t *Terminal) executeCSI(cmd rune) {
 			t.scrollTop = 0
 			t.scrollBottom = t.rows - 1
 		}
+		t.cursorX = 0
+		t.cursorY = 0
+		t.markRowDirty(t.cursorY)
 
 	case 'm':
 		t.executeSGR(args)
@@ -1021,42 +1049,43 @@ func (t *Terminal) executeCSI(cmd rune) {
 	case 'h', 'l':
 		enable := (cmd == 'h')
 		if t.csiPrivate {
-			mode := arg(0, 0)
-			switch mode {
-			case 25:
-				t.cursorVisible = enable
-			case 1047, 47:
-				t.isAlt = enable
-				t.scrollTop = 0
-				t.scrollBottom = t.rows - 1
-				t.scrollOff = 0
-				t.dirtyAll = true
-			case 1048:
-				if enable {
-					t.saveCursor()
-				} else {
-					t.restoreCursor()
-				}
-			case 1049:
-				if enable {
-					t.saveCursor()
-					t.isAlt = true
-					for r := 0; r < t.rows; r++ {
-						t.altLines[r] = t.makeRow()
+			for _, mode := range args {
+				switch mode {
+				case 25:
+					t.cursorVisible = enable
+				case 1047, 47:
+					t.isAlt = enable
+					t.scrollTop = 0
+					t.scrollBottom = t.rows - 1
+					t.scrollOff = 0
+					t.dirtyAll = true
+				case 1048:
+					if enable {
+						t.saveCursor()
+					} else {
+						t.restoreCursor()
 					}
-					t.scrollTop = 0
-					t.scrollBottom = t.rows - 1
-					t.scrollOff = 0
-				} else {
-					t.isAlt = false
-					t.restoreCursor()
-					t.scrollTop = 0
-					t.scrollBottom = t.rows - 1
-					t.scrollOff = 0
+				case 1049:
+					if enable {
+						t.saveCursor()
+						t.isAlt = true
+						for r := 0; r < t.rows; r++ {
+							t.altLines[r] = t.makeRow()
+						}
+						t.scrollTop = 0
+						t.scrollBottom = t.rows - 1
+						t.scrollOff = 0
+					} else {
+						t.isAlt = false
+						t.restoreCursor()
+						t.scrollTop = 0
+						t.scrollBottom = t.rows - 1
+						t.scrollOff = 0
+					}
+					t.dirtyAll = true
+				case 2004:
+					t.bracketedPaste = enable
 				}
-				t.dirtyAll = true
-			case 2004:
-				t.bracketedPaste = enable
 			}
 		}
 	}
