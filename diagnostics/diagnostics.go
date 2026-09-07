@@ -30,8 +30,13 @@ var pathCache sync.Map
 
 // isCommandOnPath checks if a command exists in the user's PATH
 func isCommandOnPath(name string) bool {
-	if name == "" {
+	if len(name) < 2 || len(name) > 40 {
 		return false
+	}
+	for _, r := range name {
+		if r > 127 || r == '/' || r == '\\' || r == ':' || r <= 32 {
+			return false
+		}
 	}
 	if v, ok := pathCache.Load(name); ok {
 		return v.(bool)

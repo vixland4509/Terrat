@@ -28,8 +28,11 @@ import (
 var embeddedIconPNG []byte
 
 const (
-	Version   = "0.1.0-beta"
-	AppName   = "TerraTerminal"
+	AppName = "TerraTerminal"
+)
+
+var (
+	Version   = "0.1.5"
 	AppBanner = "TerraTerminal (Terrat) v" + Version + " - Blazing fast minimalist terminal for Linux"
 )
 
@@ -207,10 +210,18 @@ func main() {
 	var updateGhostText func()
 	var updateDiagnostics func()
 
+	isSelecting := false
+	isDraggingScrollbar := false
+	dragScrollDelta := 0
+	lastDragCol := 0
+
 	switchTab := func(idx int) {
 		if idx < 0 || idx >= len(tabs) {
 			return
 		}
+		isSelecting = false
+		isDraggingScrollbar = false
+		dragScrollDelta = 0
 		activeTabIdx = idx
 		tabs[activeTabIdx].HasBell = false
 		title := tabs[activeTabIdx].Title
@@ -248,6 +259,10 @@ func main() {
 			activeTabIdx--
 		}
 
+		isSelecting = false
+		isDraggingScrollbar = false
+		dragScrollDelta = 0
+
 		tabs[activeTabIdx].HasBell = false
 		title := tabs[activeTabIdx].Title
 		if title == "" {
@@ -266,7 +281,7 @@ func main() {
 		triggerRedraw()
 	}
 
-	xEventCh := make(chan xgb.Event, 128)
+	xEventCh := make(chan xgb.Event, 1024)
 	go func() {
 		for {
 			ev, err := win.X.WaitForEvent()
@@ -541,8 +556,10 @@ func main() {
 		lastClickX    int
 		lastClickY    int
 		clickCount    int
-		isSelecting   bool
 	)
+
+	autoScrollTicker := time.NewTicker(40 * time.Millisecond)
+	defer autoScrollTicker.Stop()
 
 	var pendingEvent xgb.Event
 
@@ -606,6 +623,19 @@ func main() {
 				renderScreen()
 				continue
 
+			case <-autoScrollTicker.C:
+				if isSelecting && dragScrollDelta != 0 {
+					activeTerm := tabs[activeTabIdx].Term
+					activeTerm.ScrollKeepSelection(dragScrollDelta)
+					if dragScrollDelta > 0 {
+						activeTerm.UpdateSelection(lastDragCol, 0)
+					} else {
+						activeTerm.UpdateSelection(lastDragCol, canvas.Rows()-1)
+					}
+					triggerRedraw()
+				}
+				continue
+
 			case ev, ok = <-xEventCh:
 				if !ok {
 					return
@@ -618,9 +648,96 @@ func main() {
 
 		switch e := ev.(type) {
 		case xproto.MotionNotifyEvent:
+			lastMotion := e
+		drainMotion:
+			for {
+				select {
+				case nextEv, ok := <-xEventCh:
+					if !ok {
+						return
+					}
+					if m, isMotion := nextEv.(xproto.MotionNotifyEvent); isMotion {
+						lastMotion = m
+						continue
+					}
+					pendingEvent = nextEv
+					break drainMotion
+				default:
+					break drainMotion
+				}
+			}
+			e = lastMotion
+
+			if (e.State & xproto.ButtonMask1) == 0 {
+				if isSelecting {
+					isSelecting = false
+					dragScrollDelta = 0
+				}
+				if isDraggingScrollbar {
+					isDraggingScrollbar = false
+				}
+			}
+
+			if isDraggingScrollbar {
+				maxScroll := activeTerm.ScrollbackLen()
+				if maxScroll > 0 {
+					trackY := render.HeaderHeight + 4
+					trackH := int(currentHeight) - render.HeaderHeight - 8
+					if trackH > 24 {
+						totalLines := maxScroll + canvas.Rows()
+						thumbH := (canvas.Rows() * trackH) / totalLines
+						if thumbH < 20 {
+							thumbH = 20
+						}
+						if thumbH > trackH {
+							thumbH = trackH
+						}
+						availH := trackH - thumbH
+						if availH > 0 {
+							clickY := int(e.EventY) - trackY - (thumbH / 2)
+							if clickY < 0 {
+								clickY = 0
+							}
+							if clickY > availH {
+								clickY = availH
+							}
+							progress := float64(clickY) / float64(availH)
+							targetOff := int(float64(maxScroll)*(1.0-progress) + 0.5)
+							activeTerm.SetScrollOff(targetOff)
+							triggerRedraw()
+						}
+					}
+				}
+				continue
+			}
+
 			if (e.State&xproto.ButtonMask1) != 0 && isSelecting {
-				cx, cy := toCellCoords(int(e.EventX), int(e.EventY))
-				activeTerm.UpdateSelection(cx, cy)
+				rawY := int(e.EventY)
+				rawX := int(e.EventX)
+				gridEndY := gridStartY + (canvas.Rows() * charH)
+				cx, cy := toCellCoords(rawX, rawY)
+				lastDragCol = cx
+
+				if rawY < gridStartY {
+					dist := (gridStartY-rawY)/charH + 1
+					if dist > 5 {
+						dist = 5
+					}
+					dragScrollDelta = dist
+					activeTerm.ScrollKeepSelection(dragScrollDelta)
+					activeTerm.UpdateSelection(cx, 0)
+				} else if rawY >= gridEndY {
+					dist := (rawY-gridEndY)/charH + 1
+					if dist > 5 {
+						dist = 5
+					}
+					dragScrollDelta = -dist
+					activeTerm.ScrollKeepSelection(dragScrollDelta)
+					activeTerm.UpdateSelection(cx, canvas.Rows()-1)
+				} else {
+					dragScrollDelta = 0
+					activeTerm.UpdateSelection(cx, cy)
+				}
 				triggerRedraw()
 			} else {
 				isCtrl := (e.State & platform.ModCtrl) != 0
@@ -681,7 +798,9 @@ func main() {
 					case platform.ResizeLeft:
 						win.SetCursorType(platform.CursorResizeLeft)
 					default:
-						if int(e.EventY) < render.HeaderHeight {
+						if int(e.EventX) >= int(currentWidth)-16 && int(e.EventY) >= render.HeaderHeight && activeTerm.ScrollbackLen() > 0 {
+							win.SetCursorType(platform.CursorDefault)
+						} else if int(e.EventY) < render.HeaderHeight {
 							mx := int(e.EventX)
 							isPointer := false
 							if canvas.NewTabHitBox[1] > 0 && mx >= canvas.NewTabHitBox[0] && mx <= canvas.NewTabHitBox[1] {
@@ -853,6 +972,40 @@ func main() {
 					continue
 				}
 
+				if int(e.EventX) >= int(currentWidth)-16 && int(e.EventY) >= render.HeaderHeight {
+					maxScroll := activeTerm.ScrollbackLen()
+					if maxScroll > 0 {
+						isDraggingScrollbar = true
+						trackY := render.HeaderHeight + 4
+						trackH := int(currentHeight) - render.HeaderHeight - 8
+						if trackH > 24 {
+							totalLines := maxScroll + canvas.Rows()
+							thumbH := (canvas.Rows() * trackH) / totalLines
+							if thumbH < 20 {
+								thumbH = 20
+							}
+							if thumbH > trackH {
+								thumbH = trackH
+							}
+							availH := trackH - thumbH
+							if availH > 0 {
+								clickY := int(e.EventY) - trackY - (thumbH / 2)
+								if clickY < 0 {
+									clickY = 0
+								}
+								if clickY > availH {
+									clickY = availH
+								}
+								progress := float64(clickY) / float64(availH)
+								targetOff := int(float64(maxScroll)*(1.0-progress) + 0.5)
+								activeTerm.SetScrollOff(targetOff)
+								triggerRedraw()
+							}
+						}
+						continue
+					}
+				}
+
 				cx, cy := toCellCoords(int(e.EventX), int(e.EventY))
 				now := time.Now()
 				if now.Sub(lastClickTime) < 350*time.Millisecond && cx == lastClickX && cy == lastClickY {
@@ -938,16 +1091,22 @@ func main() {
 			}
 
 		case xproto.ButtonReleaseEvent:
-			if e.Detail == 1 && isSelecting {
-				isSelecting = false
-				if activeTerm.HasSelection() {
-					txt := activeTerm.GetSelectedText()
-					if txt != "" {
-						win.SetPrimary(txt)
+			if e.Detail == 1 {
+				if isDraggingScrollbar {
+					isDraggingScrollbar = false
+				}
+				if isSelecting {
+					isSelecting = false
+					dragScrollDelta = 0
+					if activeTerm.HasSelection() {
+						txt := activeTerm.GetSelectedText()
+						if txt != "" {
+							win.SetPrimary(txt)
+						}
+					} else {
+						activeTerm.ClearSelection()
+						triggerRedraw()
 					}
-				} else {
-					activeTerm.ClearSelection()
-					triggerRedraw()
 				}
 			}
 
@@ -1343,6 +1502,18 @@ func main() {
 		case xproto.ExposeEvent:
 			activeTerm.MarkAllDirty()
 			renderScreen()
+
+		case xproto.MappingNotifyEvent:
+			if keyHandler != nil {
+				_ = keyHandler.RefreshMapping(win.X)
+			}
+
+		case xproto.FocusOutEvent:
+			isSelecting = false
+			if hoveredURL != nil {
+				hoveredURL = nil
+				triggerRedraw()
+			}
 
 		case xproto.ClientMessageEvent:
 			if e.Format == 32 && len(e.Data.Data32) > 0 && xproto.Atom(e.Data.Data32[0]) == win.AtomWmDeleteWindow {

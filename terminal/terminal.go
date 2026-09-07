@@ -375,6 +375,61 @@ func (t *Terminal) Scroll(delta int) {
 	t.dirtyAll = true
 }
 
+func (t *Terminal) ScrollKeepSelection(delta int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.isAlt {
+		return
+	}
+
+	oldOff := t.scrollOff
+	t.scrollOff += delta
+	if t.scrollOff > len(t.scrollback) {
+		t.scrollOff = len(t.scrollback)
+	}
+	if t.scrollOff < 0 {
+		t.scrollOff = 0
+	}
+
+	actualDelta := t.scrollOff - oldOff
+	if actualDelta != 0 && t.sel.Active {
+		t.sel.StartY += actualDelta
+		t.sel.OrigStartY += actualDelta
+		if t.sel.StartY >= t.rows {
+			t.sel.StartY = t.rows - 1
+		}
+		if t.sel.StartY < 0 {
+			t.sel.StartY = 0
+		}
+		if t.sel.OrigStartY >= t.rows {
+			t.sel.OrigStartY = t.rows - 1
+		}
+		if t.sel.OrigStartY < 0 {
+			t.sel.OrigStartY = 0
+		}
+	}
+	t.dirtyAll = true
+}
+
+func (t *Terminal) SetScrollOff(off int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.isAlt {
+		return
+	}
+
+	t.scrollOff = off
+	if t.scrollOff > len(t.scrollback) {
+		t.scrollOff = len(t.scrollback)
+	}
+	if t.scrollOff < 0 {
+		t.scrollOff = 0
+	}
+	t.dirtyAll = true
+}
+
 func (t *Terminal) ScrollToTop() {
 	t.mu.Lock()
 	defer t.mu.Unlock()

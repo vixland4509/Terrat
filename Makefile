@@ -1,4 +1,5 @@
 BINARY=terrat
+VERSION?=0.1.5
 PREFIX?=$(HOME)/go/bin
 DESKTOP_DIR=$(HOME)/.local/share/applications
 
@@ -7,7 +8,7 @@ DESKTOP_DIR=$(HOME)/.local/share/applications
 all: build
 
 build:
-	GOTOOLCHAIN=local go build -ldflags="-s -w" -o $(BINARY) main.go
+	GOTOOLCHAIN=local go build -ldflags="-s -w -X main.Version=$(VERSION)" -o $(BINARY) main.go
 
 run: build
 	./$(BINARY)
@@ -39,11 +40,11 @@ clean:
 release:
 	@mkdir -p dist
 	@echo "Building release binaries..."
-	GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/$(BINARY)-linux-amd64 main.go
-	GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/$(BINARY)-linux-arm64 main.go
+	GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=$(VERSION)" -o dist/$(BINARY)-linux-amd64 main.go
+	GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.Version=$(VERSION)" -o dist/$(BINARY)-linux-arm64 main.go
 	@echo "Packaging release tarballs..."
-	@cd dist && tar -czf $(BINARY)-v0.1.0-beta-linux-amd64.tar.gz $(BINARY)-linux-amd64
-	@cd dist && tar -czf $(BINARY)-v0.1.0-beta-linux-arm64.tar.gz $(BINARY)-linux-arm64
+	@cd dist && tar -czf $(BINARY)-v$(VERSION)-linux-amd64.tar.gz $(BINARY)-linux-amd64
+	@cd dist && tar -czf $(BINARY)-v$(VERSION)-linux-arm64.tar.gz $(BINARY)-linux-arm64
 	@cd dist && sha256sum *.tar.gz > checksums.txt
 	@echo "Release assets ready in dist/:"
 	@ls -lh dist/

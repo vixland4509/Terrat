@@ -128,18 +128,73 @@ func TestAltScreenScrollLock(t *testing.T) {
 	}
 }
 
-func TestScrollbackSelection(t *testing.T) {
+func TestScrollKeepSelection(t *testing.T) {
 	term := New(40, 10)
 
-	for i := 0; i < 20; i++ {
-		term.Write([]byte(fmt.Sprintf("HIST_%02d_VALUE\r\n", i)))
+	for i := 0; i < 30; i++ {
+		term.Write([]byte(fmt.Sprintf("Row_%02d\r\n", i)))
 	}
 
-	term.Scroll(5)
+	term.StartSelection(0, 5)
+	term.UpdateSelection(10, 5)
 
-	term.SelectLine(0)
-	txt := term.GetSelectedText()
-	if !strings.Contains(txt, "HIST_") {
-		t.Fatalf("expected selected text to contain HIST_, got %q", txt)
+	if !term.HasSelection() {
+		t.Fatalf("expected selection to be active")
+	}
+
+	// Scroll up 2 lines keeping selection
+	term.ScrollKeepSelection(2)
+
+	if !term.HasSelection() {
+		t.Fatalf("expected selection to remain active after ScrollKeepSelection")
+	}
+
+	// Selection start row should have shifted from 5 to 7
+	term.mu.RLock()
+	startY := term.sel.StartY
+	origStartY := term.sel.OrigStartY
+	term.mu.RUnlock()
+
+	if startY != 7 || origStartY != 7 {
+		t.Fatalf("expected startY to be 7, got startY=%d origStartY=%d", startY, origStartY)
+	}
+
+	// Scroll down 1 line
+	term.ScrollKeepSelection(-1)
+	term.mu.RLock()
+	startY = term.sel.StartY
+	term.mu.RUnlock()
+
+	if startY != 6 {
+		t.Fatalf("expected startY to be 6 after scrolling down, got %d", startY)
 	}
 }
+
+func TestSetScrollOff(t *testing.T) {
+	term := New(40, 10)
+
+	for i := 0; i < 30; i++ {
+		term.Write([]byte(fmt.Sprintf("Row_%02d\r\n", i)))
+	}
+
+	maxScroll := term.ScrollbackLen()
+	if maxScroll == 0 {
+		t.Fatalf("expected scrollback > 0")
+	}
+
+	term.SetScrollOff(5)
+	if term.ScrollOff() != 5 {
+		t.Fatalf("expected scrollOff to be 5, got %d", term.ScrollOff())
+	}
+
+	term.SetScrollOff(maxScroll + 50)
+	if term.ScrollOff() != maxScroll {
+		t.Fatalf("expected scrollOff to clamp to %d, got %d", maxScroll, term.ScrollOff())
+	}
+
+	term.SetScrollOff(-10)
+	if term.ScrollOff() != 0 {
+		t.Fatalf("expected scrollOff to clamp to 0, got %d", term.ScrollOff())
+	}
+}
+

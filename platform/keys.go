@@ -80,11 +80,59 @@ func (kh *KeyHandler) KeySym(ev xproto.KeyPressEvent) xproto.Keysym {
 	if idx >= len(kh.keysyms) {
 		return 0
 	}
-	keysym := kh.keysyms[idx]
-	if (ev.State&ModShift) != 0 && kh.keysymsPerKeycode > 1 && kh.keysyms[idx+1] != 0 {
-		keysym = kh.keysyms[idx+1]
+
+	// In X11, bits 13-14 specify keyboard group (0-3) for layout switching
+	group := int((ev.State >> 13) & 3)
+	col := group * 2
+	if col >= int(kh.keysymsPerKeycode) {
+		col = 0
 	}
+
+	isShift := (ev.State & ModShift) != 0
+	isLock := (ev.State & ModLock) != 0 // CapsLock
+
+	keysym := kh.keysyms[idx+col]
+
+	shiftCol := col + 1
+	if shiftCol < int(kh.keysymsPerKeycode) && kh.keysyms[idx+shiftCol] != 0 {
+		if isShift {
+			keysym = kh.keysyms[idx+shiftCol]
+		}
+	}
+
+	// Fallback to Group 0 if current group has no keysym
+	if keysym == 0 && col != 0 {
+		keysym = kh.keysyms[idx]
+		if isShift && kh.keysymsPerKeycode > 1 && kh.keysyms[idx+1] != 0 {
+			keysym = kh.keysyms[idx+1]
+		}
+	}
+
+	// Apply CapsLock for ASCII letters
+	if isLock && !isShift && keysym >= 'a' && keysym <= 'z' {
+		keysym -= ('a' - 'A')
+	} else if isLock && isShift && keysym >= 'A' && keysym <= 'Z' {
+		keysym += ('a' - 'A')
+	}
+
 	return keysym
+}
+
+func (kh *KeyHandler) RefreshMapping(X *xgb.Conn) error {
+	setup := xproto.Setup(X)
+	minKey := setup.MinKeycode
+	maxKey := setup.MaxKeycode
+	count := byte(maxKey - minKey + 1)
+
+	mapping, err := xproto.GetKeyboardMapping(X, minKey, count).Reply()
+	if err != nil {
+		return err
+	}
+	kh.minKeycode = minKey
+	kh.maxKeycode = maxKey
+	kh.keysymsPerKeycode = mapping.KeysymsPerKeycode
+	kh.keysyms = mapping.Keysyms
+	return nil
 }
 
 func (kh *KeyHandler) Translate(ev xproto.KeyPressEvent) ([]byte, ActionType) {
@@ -274,22 +322,66 @@ func (kh *KeyHandler) Translate(ev xproto.KeyPressEvent) ([]byte, ActionType) {
 		return []byte("\x1b[24~"), ActionNone
 	}
 
-	if keysym >= 0x0020 && keysym <= 0x007e {
-		return []byte{byte(keysym)}, ActionNone
-	}
-
-	if keysym >= 0x00a0 && keysym <= 0x00ff {
-		buf := make([]byte, 4)
-		n := utf8.EncodeRune(buf, rune(keysym))
-		return buf[:n], ActionNone
-	}
-
-	if (keysym & 0xff000000) == 0x01000000 {
-		r := rune(keysym & 0x00ffffff)
+	if r, ok := KeysymToRune(keysym); ok {
 		buf := make([]byte, 4)
 		n := utf8.EncodeRune(buf, r)
 		return buf[:n], ActionNone
 	}
 
 	return nil, ActionNone
+}
+
+// KeysymToRune converts an X11 keysym to its corresponding Unicode rune.
+func KeysymToRune(keysym xproto.Keysym) (rune, bool) {
+	// Standard ASCII printable
+	if keysym >= 0x0020 && keysym <= 0x007e {
+		return rune(keysym), true
+	}
+
+	// Latin-1 Supplement
+	if keysym >= 0x00a0 && keysym <= 0x00ff {
+		return rune(keysym), true
+	}
+
+	// Direct Unicode keysyms (0x01000000 to 0x0110ffff)
+	if (keysym & 0xff000000) == 0x01000000 {
+		cp := rune(keysym & 0x00ffffff)
+		if cp >= 0x20 && cp <= 0x10ffff {
+			return cp, true
+		}
+	}
+
+	// Standard X11 Arabic / Persian keysyms (0x05ac - 0x05fa)
+	if keysym >= 0x05ac && keysym <= 0x05fa {
+		switch keysym {
+		case 0x05ac:
+			return '\u060C', true // Arabic comma
+		case 0x05bb:
+			return '\u061B', true // Arabic semicolon
+		case 0x05bf:
+			return '\u061F', true // Arabic question mark
+		default:
+			if keysym >= 0x05c1 && keysym <= 0x05fa {
+				return rune(0x0621 + (keysym - 0x05c1)), true
+			}
+		}
+	}
+
+	// Standard X11 Cyrillic keysyms (0x06a0 - 0x06ff)
+	if keysym >= 0x06a0 && keysym <= 0x06ff {
+		return rune(0x0400 + (keysym - 0x06a0)), true
+	}
+
+	// Standard X11 Greek keysyms (0x07a1 - 0x07fe)
+	if keysym >= 0x07a1 && keysym <= 0x07fe {
+		return rune(0x0380 + (keysym - 0x07a1)), true
+	}
+
+	// Unicode in standard range >= 0x0100 (excluding standard X11 special function keys 0xff00-0xffff)
+	// Modern XKB layouts (including Persian, Arabic, Cyrillic) often map directly to Unicode codepoints
+	if keysym >= 0x0100 && keysym <= 0x10ffff && (keysym < 0xff00 || keysym > 0xffff) {
+		return rune(keysym), true
+	}
+
+	return 0, false
 }

@@ -396,25 +396,33 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 		c.fontEngine.DrawString(c.Pixels, c.Stride, tipX+tipPadX, textY, diagMsg, tipBorderPix, tipBGPix, true)
 	}
 
-	if scrollOff > 0 {
-		maxScroll := term.ScrollbackLenLocked()
-		if maxScroll > 0 {
-			trackY := HeaderHeight + 4
-			trackH := c.Height - HeaderHeight - 8
-			if trackH > 24 {
-				totalLines := maxScroll + c.rows
-				thumbH := (c.rows * trackH) / totalLines
-				if thumbH < 20 {
-					thumbH = 20
-				}
-				if thumbH > trackH {
-					thumbH = trackH
-				}
-				progress := float64(maxScroll-scrollOff) / float64(maxScroll)
-				thumbY := trackY + int(progress*float64(trackH-thumbH))
-				thumbX := c.Width - 6
-				FillRect(c.Pixels, c.Stride, thumbX, thumbY, 3, thumbH, th.MutedText.ToPixel())
+	maxScroll := term.ScrollbackLenLocked()
+	if maxScroll > 0 {
+		trackY := HeaderHeight + 4
+		trackH := c.Height - HeaderHeight - 8
+		if trackH > 24 {
+			totalLines := maxScroll + c.rows
+			thumbH := (c.rows * trackH) / totalLines
+			if thumbH < 20 {
+				thumbH = 20
 			}
+			if thumbH > trackH {
+				thumbH = trackH
+			}
+			progress := float64(maxScroll-scrollOff) / float64(maxScroll)
+			thumbY := trackY + int(progress*float64(trackH-thumbH))
+			thumbW := 5
+			thumbX := c.Width - thumbW - 2
+
+			// Draw subtle track
+			FillRect(c.Pixels, c.Stride, thumbX, trackY, thumbW, trackH, th.HeaderBG.ToPixel())
+
+			// Draw thumb (brighter when scrolled)
+			thumbColor := th.MutedText.ToPixel()
+			if scrollOff > 0 {
+				thumbColor = th.BadgeText.ToPixel()
+			}
+			FillRect(c.Pixels, c.Stride, thumbX, thumbY, thumbW, thumbH, thumbColor)
 		}
 	}
 
