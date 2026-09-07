@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="icon.png?v=2" width="96" height="96" alt="TerraTerminal Logo">
+  <img src="icon.png?v=3" width="96" height="96" alt="TerraTerminal Logo">
 </p>
 
 <h1 align="center">TerraTerminal (<code>terrat</code>)</h1>
