@@ -41,6 +41,13 @@ type URLRange struct {
 	URL      string
 }
 
+type DiagnosticInfo struct {
+	IsError    bool
+	Message    string
+	Suggestion string
+	QuickFix   string
+}
+
 type Canvas struct {
 	Width  int
 	Height int
@@ -98,7 +105,7 @@ func (c *Canvas) Rows() int {
 	return c.rows
 }
 
-func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string, hudInfo string, tabs []TabInfo, searchMatches []SearchMatch, activeSearchIdx int, hoveredURL *URLRange) {
+func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string, hudInfo string, tabs []TabInfo, searchMatches []SearchMatch, activeSearchIdx int, hoveredURL *URLRange, ghostText string, diag *DiagnosticInfo) {
 	term.RLock()
 	defer term.RUnlock()
 
@@ -210,6 +217,32 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 		c.fontEngine.DrawString(c.Pixels, c.Stride, hudX, titleY, hudInfo, badgeTextPixel, headerBGPixel, false)
 	}
 
+	// Render diagnostic notification chip in header bar between tabs and grid size
+	if diag != nil && !term.IsAltLocked() {
+		diagMsg := diag.Message
+		if diag.Suggestion != "" {
+			diagMsg = fmt.Sprintf("%s (%s)", diag.Message, diag.Suggestion)
+		}
+		maxDiagChars := (hudX - (btnX + btnW + 24)) / charW
+		if maxDiagChars > 10 {
+			if len(diagMsg) > maxDiagChars {
+				diagMsg = diagMsg[:maxDiagChars-1] + "…"
+			}
+			chipW := len(diagMsg)*charW + 16
+			chipH := 20
+			chipX := hudX - chipW - 14
+			if chipX > btnX+btnW+12 {
+				chipY := (HeaderHeight - chipH) / 2
+				chipColor := th.MinDot.ToPixel() // Amber warning
+				if diag.IsError {
+					chipColor = th.CloseDot.ToPixel() // Red error
+				}
+				DrawRectBorder(c.Pixels, c.Stride, chipX, chipY, chipW, chipH, chipColor)
+				c.fontEngine.DrawString(c.Pixels, c.Stride, chipX+8, chipY+(chipH-charH)/2, diagMsg, chipColor, headerBGPixel, true)
+			}
+		}
+	}
+
 	gridStartY := HeaderHeight + PaddingTop
 	gridStartX := PaddingLeft
 	curX, curY, curVis := term.CursorLocked()
@@ -291,6 +324,75 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 			mask := c.fontEngine.GetGlyph(char, cell.Bold)
 			DrawGlyphBlit(c.Pixels, c.Stride, cellX, cellY, mask, fgPixel, bgPixel, cell.Underline || isHoveredURL, baseline)
 		}
+	}
+
+	// Render Ghost Text (inline autosuggestion) directly following the cursor on normal screen
+	if ghostText != "" && !term.IsAltLocked() && scrollOff == 0 && effectiveCurY >= 0 && effectiveCurY < c.rows {
+		ghostY := gridStartY + (effectiveCurY * charH)
+		ghostFGPixel := th.MutedText.ToPixel()
+		ghostBGPixel := defaultBGPixel
+
+		for idx, r := range ghostText {
+			gx := curX + idx
+			if gx >= c.cols {
+				break
+			}
+			// Only draw ghost text on empty cells so we never collide with existing characters
+			cell := term.GetCell(gx, effectiveCurY)
+			if cell.Char != 0 && cell.Char != ' ' {
+				break
+			}
+
+			cellX := gridStartX + (gx * charW)
+			mask := c.fontEngine.GetGlyph(r, false)
+			DrawGlyphBlit(c.Pixels, c.Stride, cellX, ghostY, mask, ghostFGPixel, ghostBGPixel, false, baseline)
+		}
+	}
+
+	// Render Floating Diagnostic Tooltip directly below cursor row
+	if diag != nil && !term.IsAltLocked() && scrollOff == 0 && effectiveCurY >= 0 && effectiveCurY < c.rows {
+		diagMsg := "💡 " + diag.Message
+		if diag.Suggestion != "" {
+			diagMsg += "  •  " + diag.Suggestion
+		}
+		if diag.QuickFix != "" {
+			diagMsg += "  [Alt+Enter to fix]"
+		}
+
+		tipPadX := 10
+		tipPadY := 4
+		tipW := len(diagMsg)*charW + tipPadX*2
+		tipH := charH + tipPadY*2
+
+		if tipW > c.Width-30 {
+			tipW = c.Width - 30
+		}
+
+		tipX := gridStartX + (curX * charW)
+		if tipX+tipW > c.Width-16 {
+			tipX = c.Width - tipW - 16
+		}
+		if tipX < gridStartX {
+			tipX = gridStartX
+		}
+
+		// Show below cursor, or above cursor if at the bottom row
+		tipY := gridStartY + ((effectiveCurY + 1) * charH) + 4
+		if tipY+tipH > c.Height-PaddingBottom {
+			tipY = gridStartY + ((effectiveCurY - 1) * charH) - 4
+		}
+
+		tipBGPix := th.HeaderBG.ToPixel()
+		tipBorderPix := th.MinDot.ToPixel() // Amber
+		if diag.IsError {
+			tipBorderPix = th.CloseDot.ToPixel() // Red
+		}
+
+		FillRect(c.Pixels, c.Stride, tipX, tipY, tipW, tipH, tipBGPix)
+		DrawRectBorder(c.Pixels, c.Stride, tipX, tipY, tipW, tipH, tipBorderPix)
+
+		textY := tipY + tipPadY
+		c.fontEngine.DrawString(c.Pixels, c.Stride, tipX+tipPadX, textY, diagMsg, tipBorderPix, tipBGPix, true)
 	}
 
 	if scrollOff > 0 {

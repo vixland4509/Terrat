@@ -1,10 +1,28 @@
 import React from 'react';
-import { Layers, ZoomIn, Search, Link2, Eye, MousePointer } from 'lucide-react';
+import { Layers, ZoomIn, Search, Link2, Eye, MousePointer, Sparkles, AlertCircle } from 'lucide-react';
 
 export const Features: React.FC = () => {
   const featureList = [
     {
       num: '01',
+      title: 'Inline Ghost Text',
+      subtitle: 'Fish-Like Command Autosuggestions',
+      desc: 'Real-time completion hints drawn dynamically in front of the cursor in subtle muted gray. Ingests shell history (~/.bash_history, ~/.zsh_history) and learns as you work. Press Right Arrow or Tab to accept.',
+      shortcut: 'Tab / Right Arrow',
+      icon: Sparkles,
+      color: '#7dcfff',
+    },
+    {
+      num: '02',
+      title: 'Live Diagnostics & Linting',
+      subtitle: 'Typo Detection & QuickFix',
+      desc: 'Understands common typos (gti, dokcer, sl), unclosed quote strings, and missing privileges. Shows helpful guidance in the header and lets you auto-correct instantly with Alt+Enter.',
+      shortcut: 'Alt + Enter (QuickFix)',
+      icon: AlertCircle,
+      color: '#e0af68',
+    },
+    {
+      num: '03',
       title: 'Multi-Tabs (Isolated PTY)',
       subtitle: 'POSIX Pseudo-Terminal Sessions',
       desc: 'Each tab allocates an independent PTY master/slave pair (/dev/ptmx). Shell processes are fully isolated. Exiting a shell automatically closes its tab, and closing the final tab cleanly exits the application.',
@@ -13,7 +31,7 @@ export const Features: React.FC = () => {
       color: '#7aa2f7',
     },
     {
-      num: '02',
+      num: '04',
       title: 'Live Font Scaling',
       subtitle: 'Dynamic Rasterization & SIGWINCH',
       desc: 'Adjust font size dynamically without restarting. TrueType vector glyphs are rendered into memory alpha masks in sub-millisecond time. The window geometry reflows and transmits SIGWINCH to active processes.',
@@ -22,7 +40,7 @@ export const Features: React.FC = () => {
       color: '#9ece6a',
     },
     {
-      num: '03',
+      num: '05',
       title: 'In-Buffer Search',
       subtitle: 'Live Scrollback Matching',
       desc: 'Floating find bar searches through active screen rows and scrollback history. Highlights all matches with distinct active match indicators. Navigate forward and backward with Enter and Shift+Enter.',
@@ -31,16 +49,16 @@ export const Features: React.FC = () => {
       color: '#e0af68',
     },
     {
-      num: '04',
+      num: '06',
       title: 'URL Detection & Launch',
       subtitle: 'Async xdg-open Integration',
       desc: 'Scans visible cells for web URLs and file paths. Holding Ctrl highlights the detected URL and changes the X11 mouse cursor to a pointer. Ctrl+Click opens the URL in your default browser asynchronously.',
       shortcut: 'Ctrl + Hover / Ctrl + Left Click',
       icon: Link2,
-      color: '#7dcfff',
+      color: '#7aa2f7',
     },
     {
-      num: '05',
+      num: '07',
       title: 'Composited Window Opacity',
       subtitle: 'EWMH _NET_WM_WINDOW_OPACITY',
       desc: 'Communicates directly with your X11 window manager and compositor (Picom, Mutter, KWin). Transparency is handled by the compositor, keeping terminal rendering code fast and simple.',
@@ -49,7 +67,7 @@ export const Features: React.FC = () => {
       color: '#bb9af7',
     },
     {
-      num: '06',
+      num: '08',
       title: 'Dual Selection & Clipboard',
       subtitle: 'PRIMARY & CLIPBOARD Sync',
       desc: 'Click-drag character selection with double-click word/path selection and triple-click line selection. Automatically updates X11 PRIMARY for middle-click paste and CLIPBOARD for Ctrl+Shift+V.',

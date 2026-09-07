@@ -235,6 +235,23 @@ func (t *Terminal) findWordBounds(x, y int) (int, int) {
 	return left, right
 }
 
+func (t *Terminal) SelectAll() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.sel = Selection{
+		Active:     true,
+		Mode:       SelectionModeNormal,
+		StartX:     0,
+		StartY:     0,
+		EndX:       t.cols - 1,
+		EndY:       t.rows - 1,
+		OrigStartX: 0,
+		OrigStartY: 0,
+	}
+	t.dirtyAll = true
+}
+
 func (t *Terminal) ClearSelection() {
 	t.mu.Lock()
 	defer t.mu.Unlock()

@@ -50,6 +50,7 @@ const (
 	ActionScrollBottom
 	ActionCopy
 	ActionPaste
+	ActionSelectAll
 	ActionPreferences
 	ActionZoomIn
 	ActionZoomOut
@@ -182,6 +183,9 @@ func (kh *KeyHandler) Translate(ev xproto.KeyPressEvent) ([]byte, ActionType) {
 		}
 		if keysym == 'V' || keysym == 'v' {
 			return nil, ActionPaste
+		}
+		if keysym == 'A' || keysym == 'a' {
+			return nil, ActionSelectAll
 		}
 	}
 	if isShift && keysym == 0xff63 {

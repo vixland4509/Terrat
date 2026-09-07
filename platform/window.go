@@ -293,10 +293,10 @@ func NewWindow(title string, width, height uint16, iconPath string, iconData []b
 
 	w.SetTitle(title)
 
-	if iconPath != "" {
-		_ = SetWindowIcon(X, winId, iconPath)
-	} else if len(iconData) > 0 {
+	if len(iconData) > 0 {
 		_ = SetWindowIconBytes(X, winId, iconData)
+	} else if iconPath != "" {
+		_ = SetWindowIcon(X, winId, iconPath)
 	}
 
 	w.SetMinSize(320, 180)

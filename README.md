@@ -97,9 +97,28 @@ Most terminal emulators today fall into two frustrating extremes:
 - **Middle-click:** Pastes from `PRIMARY` selection.
 - **Smart Ctrl+C:** If text is selected, `Ctrl+C` copies to clipboard; if no text is selected, it sends standard `SIGINT` to interrupt the current process.
 
+### 9. Smart Inline Ghost Text (Fish-like Autosuggestions)
+- Real-time command completion suggestions drawn directly in front of the cursor in subtle muted gray.
+- Automatically learns from your shell history (`~/.bash_history`, `~/.zsh_history`) and commands executed during the session.
+- Press **`Right Arrow`** or **`Tab`** to instantly accept and complete the suggested command.
+- Zero flicker or buffer distortion: suggestions are rendered as a non-destructive visual overlay and automatically disabled inside full-screen apps (`nvim`, `htop`).
+
+### 10. Live Command Diagnostics & Typo Detector
+- Real-time pre-execution syntax and typo linting as you type.
+- Detects common command typos (`gti` &rarr; `git`, `sl` &rarr; `ls`, `dokcer` &rarr; `docker`), subcommand mistakes (`git puch` &rarr; `git push`), and unclosed quote strings.
+- Displays an amber/red diagnostic chip in the window header bar with the exact reason and fix.
+- Press **`Alt + Enter`** to automatically apply the recommended QuickFix directly to your shell prompt!
+
 ---
 
 ## Shortcuts
+
+### Autosuggest & Diagnostics
+| Shortcut | Action |
+| :--- | :--- |
+| `Tab` / `Right Arrow` | Accept & complete inline Ghost Text suggestion |
+| `Alt + Enter` | Automatically apply QuickFix for diagnosed typo |
+| `Ctrl + Shift + D` | Toggle Live Command Diagnostics on / off |
 
 ### Tabs
 | Shortcut | Action |
@@ -131,6 +150,7 @@ Most terminal emulators today fall into two frustrating extremes:
 | Shortcut | Action |
 | :--- | :--- |
 | `Ctrl + ,` / `Ctrl + Shift + P` | Open / close Preferences modal |
+| `Ctrl + Shift + A` | Select all text in terminal buffer |
 | `Ctrl + Shift + C` (or `Ctrl + C` with selection) | Copy selected text to clipboard |
 | `Ctrl + Shift + V` / `Shift + Insert` | Paste text from clipboard |
 | `Shift + PageUp` / `PageDown` | Scroll terminal history up / down |
@@ -159,13 +179,17 @@ Settings are saved automatically in `~/.config/terrat/config.json`:
 {
   "theme": "auto",
   "font_size": 13.0,
-  "opacity": 0.95
+  "opacity": 0.95,
+  "ghost_text": true,
+  "diagnostics": true
 }
 ```
 
 - `theme`: `"auto"`, `"tokyo-night"`, `"catppuccin-mocha"`, `"tokyo-day"`, or `"solarized-light"`.
 - `font_size`: Floating-point font size in points (`8.0` to `32.0`).
 - `opacity`: Window opacity from `0.20` to `1.0` (compositor required for transparency).
+- `ghost_text`: Enable/disable inline command autosuggestions (`true` or `false`).
+- `diagnostics`: Enable/disable real-time typo diagnostics and linting (`true` or `false`).
 
 ---
 

@@ -7,16 +7,20 @@ import (
 )
 
 type Config struct {
-	Theme    string  `json:"theme"`
-	FontSize float64 `json:"font_size"`
-	Opacity  float64 `json:"opacity"`
+	Theme       string  `json:"theme"`
+	FontSize    float64 `json:"font_size"`
+	Opacity     float64 `json:"opacity"`
+	GhostText   bool    `json:"ghost_text"`
+	Diagnostics bool    `json:"diagnostics"`
 }
 
 func DefaultConfig() *Config {
 	return &Config{
-		Theme:    "auto",
-		FontSize: 13.0,
-		Opacity:  0.95,
+		Theme:       "auto",
+		FontSize:    13.0,
+		Opacity:     0.95,
+		GhostText:   true,
+		Diagnostics: true,
 	}
 }
 

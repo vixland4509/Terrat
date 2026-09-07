@@ -2,7 +2,7 @@ BINARY=terrat
 PREFIX?=$(HOME)/go/bin
 DESKTOP_DIR=$(HOME)/.local/share/applications
 
-.PHONY: all build run clean install site-build site-dev
+.PHONY: all build run clean install release site-build site-dev
 
 all: build
 
@@ -34,6 +34,19 @@ install: build
 
 clean:
 	rm -f $(BINARY)
+	rm -rf dist release
+
+release:
+	@mkdir -p dist
+	@echo "Building release binaries..."
+	GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/$(BINARY)-linux-amd64 main.go
+	GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/$(BINARY)-linux-arm64 main.go
+	@echo "Packaging release tarballs..."
+	@cd dist && tar -czf $(BINARY)-v0.1.0-beta-linux-amd64.tar.gz $(BINARY)-linux-amd64
+	@cd dist && tar -czf $(BINARY)-v0.1.0-beta-linux-arm64.tar.gz $(BINARY)-linux-arm64
+	@cd dist && sha256sum *.tar.gz > checksums.txt
+	@echo "Release assets ready in dist/:"
+	@ls -lh dist/
 
 site-build:
 	cd site && npm run build

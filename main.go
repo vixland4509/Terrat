@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -15,7 +14,9 @@ import (
 	"github.com/jezek/xgb"
 	"github.com/jezek/xgb/xproto"
 
+	"terrat/autosuggest"
 	"terrat/config"
+	"terrat/diagnostics"
 	"terrat/platform"
 	"terrat/pty"
 	"terrat/render"
@@ -26,7 +27,7 @@ import (
 var embeddedIconPNG []byte
 
 const (
-	Version   = "0.1.0-alpha"
+	Version   = "0.1.0-beta"
 	AppName   = "TerraTerminal"
 	AppBanner = "TerraTerminal (Terrat) v" + Version + " - Blazing fast minimalist terminal for Linux"
 )
@@ -89,35 +90,7 @@ func main() {
 	initWidth := uint16(render.PaddingLeft + (initCols * fontEngine.CharWidth()) + render.PaddingRight)
 	initHeight := uint16(render.HeaderHeight + render.PaddingTop + (initRows * fontEngine.CharHeight()) + render.PaddingBottom)
 
-	iconCandidates := []string{
-		"icon.png",
-		"icon.jpeg",
-	}
-	if exePath, err := os.Executable(); err == nil {
-		exeDir := filepath.Dir(exePath)
-		iconCandidates = append(iconCandidates,
-			filepath.Join(exeDir, "icon.png"),
-			filepath.Join(exeDir, "icon.jpeg"),
-		)
-	}
-
-	homeDir, _ := os.UserHomeDir()
-	if homeDir != "" {
-		iconCandidates = append(iconCandidates,
-			filepath.Join(homeDir, ".local/share/icons/hicolor/512x512/apps/terraterminal.png"),
-			filepath.Join(homeDir, "go/bin/icon.png"),
-		)
-	}
-
-	iconPath := ""
-	for _, cand := range iconCandidates {
-		if _, err := os.Stat(cand); err == nil {
-			iconPath = cand
-			break
-		}
-	}
-
-	win, err := platform.NewWindow(*titleFlag, initWidth, initHeight, iconPath, embeddedIconPNG)
+	win, err := platform.NewWindow(*titleFlag, initWidth, initHeight, "", embeddedIconPNG)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating window: %v\n", err)
 		os.Exit(1)
@@ -227,6 +200,12 @@ func main() {
 	}
 	tabs = append(tabs, initTab)
 
+	currentInputBuffer := ""
+	activeGhostText := ""
+	var activeDiag *render.DiagnosticInfo
+	var updateGhostText func()
+	var updateDiagnostics func()
+
 	switchTab := func(idx int) {
 		if idx < 0 || idx >= len(tabs) {
 			return
@@ -238,6 +217,14 @@ func main() {
 			title = "bash"
 		}
 		win.SetTitle(AppName + " - " + title)
+		currentInputBuffer = ""
+		activeDiag = nil
+		if updateGhostText != nil {
+			updateGhostText()
+		}
+		if updateDiagnostics != nil {
+			updateDiagnostics()
+		}
 		tabs[activeTabIdx].Term.MarkAllDirty()
 		triggerRedraw()
 	}
@@ -266,6 +253,14 @@ func main() {
 			title = "bash"
 		}
 		win.SetTitle(AppName + " - " + title)
+		currentInputBuffer = ""
+		activeDiag = nil
+		if updateGhostText != nil {
+			updateGhostText()
+		}
+		if updateDiagnostics != nil {
+			updateDiagnostics()
+		}
 		tabs[activeTabIdx].Term.MarkAllDirty()
 		triggerRedraw()
 	}
@@ -306,6 +301,39 @@ func main() {
 	activeSearchIdx := 0
 
 	var hoveredURL *render.URLRange
+
+	suggestEngine := autosuggest.NewEngine()
+	updateGhostText = func() {
+		if !appConfig.GhostText || tabs[activeTabIdx].Term.IsAlt() || isSearchOpen || isPrefOpen {
+			activeGhostText = ""
+			return
+		}
+		trimmed := strings.TrimLeft(currentInputBuffer, " ")
+		if len(trimmed) >= 1 {
+			activeGhostText = suggestEngine.Suggest(trimmed)
+		} else {
+			activeGhostText = ""
+		}
+	}
+
+	updateDiagnostics = func() {
+		if !appConfig.Diagnostics || tabs[activeTabIdx].Term.IsAlt() || isSearchOpen || isPrefOpen {
+			activeDiag = nil
+			return
+		}
+		trimmed := strings.TrimLeft(currentInputBuffer, " ")
+		diag := diagnostics.Analyze(trimmed)
+		if diag != nil {
+			activeDiag = &render.DiagnosticInfo{
+				IsError:    diag.Severity == diagnostics.SeverityError,
+				Message:    diag.Message,
+				Suggestion: diag.Suggestion,
+				QuickFix:   diag.QuickFix,
+			}
+		} else {
+			activeDiag = nil
+		}
+	}
 
 	updateSearchMatches := func() {
 		searchMatches = nil
@@ -394,7 +422,7 @@ func main() {
 
 		activeTerm := tabs[activeTabIdx].Term
 		hud := fmt.Sprintf("%dx%d", canvas.Cols(), canvas.Rows())
-		canvas.Render(activeTerm, cursorBlink, currentTitle, hud, tabInfos, searchMatches, activeSearchIdx, hoveredURL)
+		canvas.Render(activeTerm, cursorBlink, currentTitle, hud, tabInfos, searchMatches, activeSearchIdx, hoveredURL, activeGhostText, activeDiag)
 
 		if isSearchOpen {
 			matchCount := 0
@@ -987,6 +1015,19 @@ func main() {
 					continue
 				}
 
+				// Shortcut to toggle Live Diagnostics on/off: Ctrl + Shift + D
+				if (e.State&platform.ModCtrl) != 0 && (e.State&platform.ModShift) != 0 && (keysym == 'D' || keysym == 'd') {
+					appConfig.Diagnostics = !appConfig.Diagnostics
+					_ = config.Save(appConfig)
+					if !appConfig.Diagnostics {
+						activeDiag = nil
+					} else {
+						updateDiagnostics()
+					}
+					triggerRedraw()
+					continue
+				}
+
 				if action == platform.ActionNewTab {
 					newTab, err := createTab(canvas.Cols(), canvas.Rows(), currentWidth, currentHeight, activeTheme)
 					if err == nil {
@@ -1023,6 +1064,10 @@ func main() {
 					}
 				} else if action == platform.ActionPaste {
 					win.RequestPaste(win.AtomClipboard)
+				} else if action == platform.ActionSelectAll {
+					activeTerm.SelectAll()
+					triggerRedraw()
+					continue
 				} else if action == platform.ActionScrollUp {
 					if activeTerm.IsAlt() {
 						_, _ = activePTY.Write([]byte("\x1b[5~"))
@@ -1049,6 +1094,69 @@ func main() {
 						activeTerm.ClearSelection()
 						triggerRedraw()
 					} else {
+						// Ghost text completion: when Right Arrow (0xff53) or Tab (0xff09) is pressed with an active suggestion
+						if activeGhostText != "" && !activeTerm.IsAlt() {
+							isAcceptKey := (keysym == 0xff53) || (keysym == 0xff09 && (e.State&platform.ModShift) == 0)
+							if isAcceptKey {
+								toWrite := []byte(activeGhostText)
+								_, _ = activePTY.Write(toWrite)
+								currentInputBuffer += activeGhostText
+								activeGhostText = ""
+								activeTerm.ClearSelection()
+								activeTerm.ResetScroll()
+								triggerRedraw()
+								continue
+							}
+						}
+
+						// Track input buffer for ghost text matching and live diagnostics
+						if !activeTerm.IsAlt() {
+							isAlt := (e.State & platform.ModAlt) != 0
+							if isAlt && (keysym == 0xff0d || keysym == 0xff8d) && activeDiag != nil {
+								// Alt+Enter applies quickfix if available!
+								diag := diagnostics.Analyze(strings.TrimSpace(currentInputBuffer))
+								if diag != nil && diag.QuickFix != "" {
+									// Erase current line in terminal: send Ctrl+U (\x15), then type quickfix
+									_, _ = activePTY.Write([]byte{0x15})
+									_, _ = activePTY.Write([]byte(diag.QuickFix))
+									currentInputBuffer = diag.QuickFix
+									updateGhostText()
+									updateDiagnostics()
+									activeTerm.ClearSelection()
+									activeTerm.ResetScroll()
+									triggerRedraw()
+									continue
+								}
+							}
+
+							if keysym == 0xff0d || keysym == 0xff8d { // Enter
+								trimmedCmd := strings.TrimSpace(currentInputBuffer)
+								if len(trimmedCmd) >= 2 {
+									suggestEngine.Add(trimmedCmd)
+									if strings.HasPrefix(trimmedCmd, "alias ") || strings.HasPrefix(trimmedCmd, "abbr ") {
+										diagnostics.RegisterAliasFromLine(trimmedCmd)
+									}
+								}
+								currentInputBuffer = ""
+								activeGhostText = ""
+								activeDiag = nil
+							} else if keysym == 0xff08 { // Backspace
+								if len(currentInputBuffer) > 0 {
+									currentInputBuffer = currentInputBuffer[:len(currentInputBuffer)-1]
+									updateGhostText()
+									updateDiagnostics()
+								}
+							} else if keysym == 0xff1b || (len(data) == 1 && (data[0] == 0x03 || data[0] == 0x15)) { // Escape, Ctrl+C, Ctrl+U
+								currentInputBuffer = ""
+								activeGhostText = ""
+								activeDiag = nil
+							} else if len(data) == 1 && data[0] >= 32 && data[0] <= 126 { // Normal printable ASCII
+								currentInputBuffer += string(data[0])
+								updateGhostText()
+								updateDiagnostics()
+							}
+						}
+
 						activeTerm.ClearSelection()
 						_, _ = activePTY.Write(data)
 						activeTerm.ResetScroll()

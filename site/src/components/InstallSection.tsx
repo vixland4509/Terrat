@@ -11,6 +11,9 @@ export const InstallSection: React.FC = () => {
   };
 
   const keybindings = [
+    { key: 'Tab / Right Arrow', desc: 'Accept Ghost Text suggestion' },
+    { key: 'Alt + Enter', desc: 'Apply Diagnostics QuickFix' },
+    { key: 'Ctrl + Shift + D', desc: 'Toggle Diagnostics On / Off' },
     { key: 'Ctrl + Shift + T', desc: 'Spawn new tab' },
     { key: 'Ctrl + Shift + W', desc: 'Close active tab' },
     { key: 'Ctrl + Tab', desc: 'Cycle to next tab' },
@@ -139,12 +142,11 @@ cd Terrat &amp;&amp; make install
           </div>
           <div className="p-4 bg-[#13141c] border border-[#292e42] rounded-[2px] font-mono text-xs text-[#a9b1d6] overflow-x-auto">
             <pre>{`{
-  "font": "JetBrains Mono",
-  "fontSize": 12.0,
-  "theme": "tokyo-night",
+  "theme": "auto",
+  "font_size": 13.0,
   "opacity": 0.95,
-  "scrollbackLines": 10000,
-  "cursorBlink": true
+  "ghost_text": true,
+  "diagnostics": true
 }`}</pre>
           </div>
           <div className="mt-3 text-[11px] text-[#565f89] font-mono">
