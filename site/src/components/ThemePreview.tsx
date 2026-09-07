@@ -10,6 +10,8 @@ interface ThemeInfo {
   header: string;
   accent: string;
   mode: 'dark' | 'light';
+  dots?: { close: string; min: string; max: string };
+  colors?: string[];
 }
 
 export const ThemePreview: React.FC = () => {
@@ -23,6 +25,8 @@ export const ThemePreview: React.FC = () => {
       header: '#13141c',
       accent: '#7aa2f7',
       mode: 'dark',
+      dots: { close: '#f7768e', min: '#e0af68', max: '#9ece6a' },
+      colors: ['#f7768e', '#e0af68', '#9ece6a', '#7dcfff', '#7aa2f7', '#bb9af7'],
     },
     {
       id: 'catppuccin-mocha',
@@ -33,6 +37,20 @@ export const ThemePreview: React.FC = () => {
       header: '#181825',
       accent: '#89b4fa',
       mode: 'dark',
+      dots: { close: '#f38ba8', min: '#f9e2af', max: '#a6e3a1' },
+      colors: ['#f38ba8', '#f9e2af', '#a6e3a1', '#94e2d5', '#89b4fa', '#f5c2e7'],
+    },
+    {
+      id: 'minecraft',
+      name: 'Minecraft',
+      tag: '',
+      bg: '#191c19',
+      fg: '#e4e7dd',
+      header: '#131513',
+      accent: '#55ff55',
+      mode: 'dark',
+      dots: { close: '#ff4747', min: '#ffaa00', max: '#55ff55' },
+      colors: ['#ff5555', '#ffff55', '#55ff55', '#55ffff', '#5a78ff', '#e37bfb'],
     },
     {
       id: 'tokyo-day',
@@ -43,6 +61,8 @@ export const ThemePreview: React.FC = () => {
       header: '#e6e9ef',
       accent: '#2e7de9',
       mode: 'light',
+      dots: { close: '#f52a65', min: '#8c6c3e', max: '#587539' },
+      colors: ['#f52a65', '#8c6c3e', '#587539', '#007197', '#2e7de9', '#9854f1'],
     },
     {
       id: 'solarized-light',
@@ -53,6 +73,8 @@ export const ThemePreview: React.FC = () => {
       header: '#eee8d5',
       accent: '#268bd2',
       mode: 'light',
+      dots: { close: '#dc322f', min: '#b58900', max: '#859900' },
+      colors: ['#dc322f', '#b58900', '#859900', '#2aa198', '#268bd2', '#d33682'],
     },
   ];
 
@@ -98,7 +120,7 @@ export const ThemePreview: React.FC = () => {
                   <div className="w-4 h-4 rounded-full border border-black/20" style={{ backgroundColor: th.bg }} />
                   <div>
                     <div className="font-bold text-white text-sm">{th.name}</div>
-                    <div className="text-[11px] text-[#565f89]">{th.tag}</div>
+                    {th.tag && <div className="text-[11px] text-[#565f89]">{th.tag}</div>}
                   </div>
                 </div>
 
@@ -125,7 +147,11 @@ export const ThemePreview: React.FC = () => {
           {/* Live Preview Window */}
           <div className="lg:col-span-7">
             <div
-              className="rounded-[4px] overflow-hidden border border-[#292e42] shadow-2xl transition-colors duration-150"
+              className={`rounded-[4px] overflow-hidden border shadow-2xl transition-colors duration-150 ${
+                selectedTheme.id === 'minecraft'
+                  ? 'border-2 border-black shadow-[inset_2px_2px_0_#4a4e4a,inset_-2px_-2px_0_#141614]'
+                  : 'border-[#292e42]'
+              }`}
               style={{ backgroundColor: selectedTheme.bg }}
             >
               {/* Header */}
@@ -137,11 +163,42 @@ export const ThemePreview: React.FC = () => {
                 }}
               >
                 <div className="flex items-center gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#f7768e]" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#e0af68]" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#9ece6a]" />
+                  {selectedTheme.id === 'minecraft' ? (
+                    <>
+                      <div
+                        className="w-3 h-3 bg-[#b81818] border border-black shadow-[inset_1px_1px_0_#ff6666,inset_-1px_-1px_0_#660000]"
+                        title="Redstone (Close)"
+                      />
+                      <div
+                        className="w-3 h-3 bg-[#dca316] border border-black shadow-[inset_1px_1px_0_#ffea75,inset_-1px_-1px_0_#7a5700]"
+                        title="Gold (Minimize)"
+                      />
+                      <div
+                        className="w-3 h-3 bg-[#1db347] border border-black shadow-[inset_1px_1px_0_#70ff94,inset_-1px_-1px_0_#0c6922]"
+                        title="Emerald (Maximize)"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <div
+                        className="w-2.5 h-2.5 rounded-full"
+                        style={{ backgroundColor: selectedTheme.dots?.close || '#f7768e' }}
+                      />
+                      <div
+                        className="w-2.5 h-2.5 rounded-full"
+                        style={{ backgroundColor: selectedTheme.dots?.min || '#e0af68' }}
+                      />
+                      <div
+                        className="w-2.5 h-2.5 rounded-full"
+                        style={{ backgroundColor: selectedTheme.dots?.max || '#9ece6a' }}
+                      />
+                    </>
+                  )}
                 </div>
-                <div className="font-mono text-xs" style={{ color: selectedTheme.accent }}>
+                <div
+                  className={`font-mono text-xs ${selectedTheme.id === 'minecraft' ? '[text-shadow:1px_1px_0px_#153f15] font-bold' : ''}`}
+                  style={{ color: selectedTheme.accent }}
+                >
                   terrat &mdash; {selectedTheme.name}
                 </div>
                 <div className="font-mono text-[11px] opacity-50" style={{ color: selectedTheme.fg }}>
@@ -150,19 +207,27 @@ export const ThemePreview: React.FC = () => {
               </div>
 
               {/* Terminal Preview Content */}
-              <div className="p-5 font-mono text-xs space-y-2 leading-relaxed" style={{ color: selectedTheme.fg }}>
+              <div
+                className={`p-5 font-mono text-xs space-y-2 leading-relaxed ${
+                  selectedTheme.id === 'minecraft' ? '[text-shadow:1px_1px_0px_#111111]' : ''
+                }`}
+                style={{ color: selectedTheme.fg }}
+              >
                 <div className="flex items-center gap-2">
                   <span style={{ color: selectedTheme.accent }} className="font-bold">vixland@box</span>
                   <span className="opacity-50">:</span>
                   <span style={{ color: selectedTheme.accent }}>~/terrat</span>
                   <span className="opacity-50">$</span>
                   <span>git status -s</span>
+                  {selectedTheme.id === 'minecraft' && (
+                    <span className="inline-block w-2 h-3.5 bg-[#55ffff] border border-black shadow-[inset_1px_1px_0_#aaffff,inset_-1px_-1px_0_#008888]" />
+                  )}
                 </div>
 
                 <div className="pl-2 space-y-0.5 text-[11px]">
-                  <div className="text-[#9ece6a]">&nbsp;M pkg/render/font.go</div>
-                  <div className="text-[#9ece6a]">&nbsp;M pkg/terminal/tab.go</div>
-                  <div className="text-[#f7768e]">?? pkg/terminal/search.go</div>
+                  <div style={{ color: selectedTheme.colors ? selectedTheme.colors[2] : '#9ece6a' }}>&nbsp;M pkg/render/font.go</div>
+                  <div style={{ color: selectedTheme.colors ? selectedTheme.colors[2] : '#9ece6a' }}>&nbsp;M pkg/terminal/tab.go</div>
+                  <div style={{ color: selectedTheme.colors ? selectedTheme.colors[0] : '#f7768e' }}>?? pkg/terminal/search.go</div>
                 </div>
 
                 <div className="flex items-center gap-2 pt-2">
@@ -175,18 +240,18 @@ export const ThemePreview: React.FC = () => {
 
                 <div className="pl-2 space-y-0.5 text-[11px]">
                   <div>=== RUN   TestTabCreation</div>
-                  <div className="text-[#9ece6a]">--- PASS: TestTabCreation (0.00s)</div>
+                  <div style={{ color: selectedTheme.colors ? selectedTheme.colors[2] : '#9ece6a' }}>--- PASS: TestTabCreation (0.00s)</div>
                   <div>=== RUN   TestPTYAllocation</div>
-                  <div className="text-[#9ece6a]">--- PASS: TestPTYAllocation (0.01s)</div>
+                  <div style={{ color: selectedTheme.colors ? selectedTheme.colors[2] : '#9ece6a' }}>--- PASS: TestPTYAllocation (0.01s)</div>
                   <div>=== RUN   TestSearchBuffer</div>
-                  <div className="text-[#9ece6a]">--- PASS: TestSearchBuffer (0.00s)</div>
-                  <div className="text-[#9ece6a] font-bold">PASS</div>
+                  <div style={{ color: selectedTheme.colors ? selectedTheme.colors[2] : '#9ece6a' }}>--- PASS: TestSearchBuffer (0.00s)</div>
+                  <div style={{ color: selectedTheme.colors ? selectedTheme.colors[2] : '#9ece6a' }} className="font-bold">PASS</div>
                   <div className="opacity-75">ok&nbsp;&nbsp;github.com/vixland4509/Terrat/pkg/terminal&nbsp;&nbsp;0.012s</div>
                 </div>
 
                 {/* ANSI color swatches */}
                 <div className="pt-3 border-t border-black/10 flex gap-1">
-                  {['#f7768e', '#e0af68', '#9ece6a', '#7dcfff', '#7aa2f7', '#bb9af7'].map((hex) => (
+                  {(selectedTheme.colors || ['#f7768e', '#e0af68', '#9ece6a', '#7dcfff', '#7aa2f7', '#bb9af7']).map((hex) => (
                     <div
                       key={hex}
                       className="w-6 h-3.5 rounded-[1px]"

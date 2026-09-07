@@ -397,6 +397,90 @@ func (fe *FontEngine) DrawString(buf []byte, stride int, startX, startY int, tex
 	}
 }
 
+func DrawGlyphBlitTransparent(buf []byte, stride int, cellX, cellY int, mask *GlyphMask, fgPixel uint32, underline bool, baseline int) {
+	if mask == nil {
+		return
+	}
+	width := mask.Width
+	height := mask.Height
+
+	fgR := byte(fgPixel >> 16)
+	fgG := byte(fgPixel >> 8)
+	fgB := byte(fgPixel)
+
+	for y := 0; y < height; y++ {
+		py := cellY + y
+		if py < 0 || py*stride >= len(buf) {
+			continue
+		}
+		bufRowOffset := py*stride + cellX*4
+		maskRowOffset := y * width
+
+		for x := 0; x < width; x++ {
+			alpha := int(mask.Alpha[maskRowOffset+x])
+			if alpha == 0 {
+				continue
+			}
+			pixelOffset := bufRowOffset + x*4
+			if pixelOffset < 0 || pixelOffset+3 >= len(buf) {
+				continue
+			}
+
+			if alpha >= 255 {
+				buf[pixelOffset+0] = fgB
+				buf[pixelOffset+1] = fgG
+				buf[pixelOffset+2] = fgR
+				buf[pixelOffset+3] = 0xff
+			} else {
+				inv := 255 - alpha
+				buf[pixelOffset+0] = byte((int(fgB)*alpha + int(buf[pixelOffset+0])*inv) / 255)
+				buf[pixelOffset+1] = byte((int(fgG)*alpha + int(buf[pixelOffset+1])*inv) / 255)
+				buf[pixelOffset+2] = byte((int(fgR)*alpha + int(buf[pixelOffset+2])*inv) / 255)
+				buf[pixelOffset+3] = 0xff
+			}
+		}
+	}
+
+	if underline && baseline+1 < height {
+		py := cellY + baseline + 1
+		if py >= 0 && py*stride < len(buf) {
+			bufRowOffset := py*stride + cellX*4
+			for x := 0; x < width; x++ {
+				pixelOffset := bufRowOffset + x*4
+				if pixelOffset >= 0 && pixelOffset+3 < len(buf) {
+					buf[pixelOffset+0] = fgB
+					buf[pixelOffset+1] = fgG
+					buf[pixelOffset+2] = fgR
+					buf[pixelOffset+3] = 0xff
+				}
+			}
+		}
+	}
+}
+
+func MinecraftShadow(pixel uint32) uint32 {
+	r := ((pixel >> 16) & 0xff) / 4
+	g := ((pixel >> 8) & 0xff) / 4
+	b := (pixel & 0xff) / 4
+	return (r << 16) | (g << 8) | b
+}
+
+func (fe *FontEngine) DrawStringShadow(buf []byte, stride int, startX, startY int, text string, fgPixel, shadowPixel uint32, bold bool) {
+	curX := startX + 1
+	curY := startY + 1
+	for _, ch := range text {
+		mask := fe.GetGlyph(ch, bold)
+		DrawGlyphBlitTransparent(buf, stride, curX, curY, mask, shadowPixel, false, fe.baseline)
+		curX += fe.charWidth
+	}
+	curX = startX
+	for _, ch := range text {
+		mask := fe.GetGlyph(ch, bold)
+		DrawGlyphBlitTransparent(buf, stride, curX, startY, mask, fgPixel, false, fe.baseline)
+		curX += fe.charWidth
+	}
+}
+
 func DrawHLine(buf []byte, stride int, x, y, width int, pixel uint32) {
 	if y < 0 || y*stride >= len(buf) {
 		return

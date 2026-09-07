@@ -49,6 +49,142 @@ type DiagnosticInfo struct {
 	QuickFix   string
 }
 
+var mcDirt16x16 = [16][16]uint32{
+	{0x231810, 0x271a12, 0x241810, 0x1f150e, 0x241810, 0x2b1d14, 0x271a12, 0x241810, 0x231810, 0x20160f, 0x241810, 0x271a12, 0x2b1d14, 0x241810, 0x1f150e, 0x231810},
+	{0x271a12, 0x2b1d14, 0x271a12, 0x241810, 0x1c130d, 0x241810, 0x2f2017, 0x2b1d14, 0x241810, 0x271a12, 0x2b1d14, 0x332319, 0x271a12, 0x1c130d, 0x241810, 0x271a12},
+	{0x241810, 0x271a12, 0x1a110b, 0x170f09, 0x241810, 0x2b1d14, 0x271a12, 0x241810, 0x1c130d, 0x2b1d14, 0x37261a, 0x2b1d14, 0x241810, 0x241810, 0x2b1d14, 0x241810},
+	{0x20160f, 0x1c130d, 0x241810, 0x241810, 0x2b1d14, 0x241810, 0x1f150e, 0x1c130d, 0x241810, 0x241810, 0x2b1d14, 0x241810, 0x1f150e, 0x271a12, 0x2f2017, 0x271a12},
+	{0x241810, 0x241810, 0x2b1d14, 0x2f2017, 0x271a12, 0x1c130d, 0x241810, 0x271a12, 0x2b1d14, 0x1c130d, 0x241810, 0x1c130d, 0x241810, 0x2b1d14, 0x271a12, 0x20160f},
+	{0x2b1d14, 0x2f2017, 0x271a12, 0x241810, 0x1f150e, 0x241810, 0x2b1d14, 0x332319, 0x271a12, 0x241810, 0x2b1d14, 0x271a12, 0x241810, 0x20160f, 0x241810, 0x241810},
+	{0x271a12, 0x241810, 0x1c130d, 0x241810, 0x271a12, 0x2b1d14, 0x271a12, 0x2b1d14, 0x241810, 0x2f2017, 0x2b1d14, 0x241810, 0x1c130d, 0x241810, 0x2b1d14, 0x271a12},
+	{0x241810, 0x1c130d, 0x241810, 0x2b1d14, 0x332319, 0x271a12, 0x1c130d, 0x241810, 0x271a12, 0x271a12, 0x20160f, 0x241810, 0x271a12, 0x2b1d14, 0x271a12, 0x241810},
+	{0x20160f, 0x241810, 0x2b1d14, 0x271a12, 0x241810, 0x1f150e, 0x241810, 0x2b1d14, 0x37261a, 0x2b1d14, 0x241810, 0x1c130d, 0x241810, 0x241810, 0x1f150e, 0x20160f},
+	{0x241810, 0x2b1d14, 0x271a12, 0x20160f, 0x241810, 0x271a12, 0x2b1d14, 0x241810, 0x2b1d14, 0x241810, 0x1c130d, 0x241810, 0x2b1d14, 0x2f2017, 0x271a12, 0x241810},
+	{0x2b1d14, 0x271a12, 0x1c130d, 0x241810, 0x2b1d14, 0x332319, 0x271a12, 0x1c130d, 0x241810, 0x271a12, 0x2b1d14, 0x271a12, 0x241810, 0x2b1d14, 0x241810, 0x2b1d14},
+	{0x271a12, 0x241810, 0x271a12, 0x2b1d14, 0x241810, 0x271a12, 0x20160f, 0x241810, 0x2b1d14, 0x2f2017, 0x241810, 0x20160f, 0x271a12, 0x241810, 0x1c130d, 0x271a12},
+	{0x241810, 0x20160f, 0x2b1d14, 0x271a12, 0x1c130d, 0x241810, 0x271a12, 0x2b1d14, 0x271a12, 0x241810, 0x1c130d, 0x241810, 0x2b1d14, 0x332319, 0x271a12, 0x241810},
+	{0x1f150e, 0x241810, 0x241810, 0x1c130d, 0x241810, 0x2b1d14, 0x37261a, 0x271a12, 0x20160f, 0x241810, 0x271a12, 0x2b1d14, 0x271a12, 0x241810, 0x20160f, 0x1f150e},
+	{0x241810, 0x271a12, 0x2b1d14, 0x241810, 0x271a12, 0x271a12, 0x2b1d14, 0x241810, 0x241810, 0x2b1d14, 0x2f2017, 0x241810, 0x1c130d, 0x241810, 0x271a12, 0x241810},
+	{0x271a12, 0x2b1d14, 0x241810, 0x20160f, 0x241810, 0x20160f, 0x241810, 0x271a12, 0x2b1d14, 0x271a12, 0x241810, 0x1c130d, 0x241810, 0x2b1d14, 0x241810, 0x271a12},
+}
+
+var mcDeepslate16x16 = [16][16]uint32{
+	{0x181a18, 0x1c1f1c, 0x181a18, 0x141614, 0x181a18, 0x1e221e, 0x1c1f1c, 0x181a18, 0x181a18, 0x151715, 0x181a18, 0x1c1f1c, 0x222622, 0x181a18, 0x141614, 0x181a18},
+	{0x1c1f1c, 0x222622, 0x1c1f1c, 0x181a18, 0x121412, 0x181a18, 0x242824, 0x1e221e, 0x181a18, 0x1c1f1c, 0x1e221e, 0x262a26, 0x1c1f1c, 0x121412, 0x181a18, 0x1c1f1c},
+	{0x181a18, 0x1c1f1c, 0x121412, 0x101210, 0x181a18, 0x1e221e, 0x1c1f1c, 0x181a18, 0x121412, 0x1e221e, 0x262b26, 0x1e221e, 0x181a18, 0x181a18, 0x1e221e, 0x181a18},
+	{0x151715, 0x121412, 0x181a18, 0x181a18, 0x1e221e, 0x181a18, 0x141614, 0x121412, 0x181a18, 0x181a18, 0x1e221e, 0x181a18, 0x141614, 0x1c1f1c, 0x242824, 0x1c1f1c},
+	{0x181a18, 0x181a18, 0x1e221e, 0x242824, 0x1c1f1c, 0x121412, 0x181a18, 0x1c1f1c, 0x1e221e, 0x121412, 0x181a18, 0x121412, 0x181a18, 0x1e221e, 0x1c1f1c, 0x151715},
+	{0x1e221e, 0x242824, 0x1c1f1c, 0x181a18, 0x141614, 0x181a18, 0x1e221e, 0x262a26, 0x1c1f1c, 0x181a18, 0x1e221e, 0x1c1f1c, 0x181a18, 0x151715, 0x181a18, 0x181a18},
+	{0x1c1f1c, 0x181a18, 0x121412, 0x181a18, 0x1c1f1c, 0x1e221e, 0x1c1f1c, 0x1e221e, 0x181a18, 0x242824, 0x1e221e, 0x181a18, 0x121412, 0x181a18, 0x1e221e, 0x1c1f1c},
+	{0x181a18, 0x121412, 0x181a18, 0x1e221e, 0x262a26, 0x1c1f1c, 0x121412, 0x181a18, 0x1c1f1c, 0x1c1f1c, 0x151715, 0x181a18, 0x1c1f1c, 0x1e221e, 0x1c1f1c, 0x181a18},
+	{0x151715, 0x181a18, 0x1e221e, 0x1c1f1c, 0x181a18, 0x141614, 0x181a18, 0x1e221e, 0x282e28, 0x1e221e, 0x181a18, 0x121412, 0x181a18, 0x181a18, 0x141614, 0x151715},
+	{0x181a18, 0x1e221e, 0x1c1f1c, 0x151715, 0x181a18, 0x1c1f1c, 0x1e221e, 0x181a18, 0x1e221e, 0x181a18, 0x121412, 0x181a18, 0x1e221e, 0x242824, 0x1c1f1c, 0x181a18},
+	{0x1e221e, 0x1c1f1c, 0x121412, 0x181a18, 0x1e221e, 0x262a26, 0x1c1f1c, 0x121412, 0x181a18, 0x1c1f1c, 0x1e221e, 0x1c1f1c, 0x181a18, 0x1e221e, 0x181a18, 0x1e221e},
+	{0x1c1f1c, 0x181a18, 0x1c1f1c, 0x1e221e, 0x181a18, 0x1c1f1c, 0x151715, 0x181a18, 0x1e221e, 0x242824, 0x181a18, 0x151715, 0x1c1f1c, 0x181a18, 0x121412, 0x1c1f1c},
+	{0x181a18, 0x151715, 0x1e221e, 0x1c1f1c, 0x121412, 0x181a18, 0x1c1f1c, 0x1e221e, 0x1c1f1c, 0x181a18, 0x121412, 0x181a18, 0x1e221e, 0x262a26, 0x1c1f1c, 0x181a18},
+	{0x141614, 0x181a18, 0x181a18, 0x121412, 0x181a18, 0x1e221e, 0x282e28, 0x1c1f1c, 0x151715, 0x181a18, 0x1c1f1c, 0x1e221e, 0x1c1f1c, 0x181a18, 0x151715, 0x141614},
+	{0x181a18, 0x1c1f1c, 0x1e221e, 0x181a18, 0x1c1f1c, 0x1c1f1c, 0x1e221e, 0x181a18, 0x181a18, 0x1e221e, 0x242824, 0x181a18, 0x121412, 0x181a18, 0x1c1f1c, 0x181a18},
+	{0x1c1f1c, 0x1e221e, 0x181a18, 0x151715, 0x181a18, 0x151715, 0x181a18, 0x1c1f1c, 0x1e221e, 0x1c1f1c, 0x181a18, 0x121412, 0x181a18, 0x1e221e, 0x181a18, 0x1c1f1c},
+}
+
+func FillPattern16x16(buf []byte, stride, x, y, w, h int, pattern *[16][16]uint32) {
+	if w <= 0 || h <= 0 {
+		return
+	}
+	for row := 0; row < h; row++ {
+		py := y + row
+		if py < 0 || py*stride >= len(buf) {
+			continue
+		}
+		bufRowOffset := py * stride
+		patY := py & 15
+
+		for col := 0; col < w; col++ {
+			px := x + col
+			patX := px & 15
+			pixel := pattern[patY][patX]
+
+			p := bufRowOffset + px*4
+			if p >= 0 && p+3 < len(buf) {
+				buf[p+0] = byte(pixel)
+				buf[p+1] = byte(pixel >> 8)
+				buf[p+2] = byte(pixel >> 16)
+				buf[p+3] = 0xff
+			}
+		}
+	}
+}
+
+func DrawMinecraftButton(buf []byte, stride, x, y, w, h int, selected bool) {
+	DrawRectBorder(buf, stride, x, y, w, h, 0x000000)
+
+	hiColor := uint32(0x8a8a8a)
+	shColor := uint32(0x282828)
+	topFill := uint32(0x525252)
+	botFill := uint32(0x424242)
+
+	if selected {
+		hiColor = 0xffffff
+		shColor = 0x5a5a5a
+		topFill = 0x6e6e6e
+		botFill = 0x5a5a5a
+	}
+
+	halfH := (h - 2) / 2
+	FillRect(buf, stride, x+1, y+1, w-2, halfH, topFill)
+	FillRect(buf, stride, x+1, y+1+halfH, w-2, h-2-halfH, botFill)
+
+	DrawHLine(buf, stride, x+1, y+1, w-2, hiColor)
+	DrawVLine(buf, stride, x+1, y+1, h-2, hiColor)
+
+	DrawHLine(buf, stride, x+1, y+h-2, w-2, shColor)
+	DrawVLine(buf, stride, x+w-2, y+1, h-2, shColor)
+	DrawHLine(buf, stride, x+2, y+h-3, w-4, shColor)
+}
+
+func DrawMinecraftBlock(buf []byte, stride, x, y int, blockType string) {
+	size := 12
+	DrawRectBorder(buf, stride, x, y, size, size, 0x000000)
+
+	var hiCol, shCol, fillCol, dotCol uint32
+	switch blockType {
+	case "redstone":
+		hiCol = 0xff6666
+		shCol = 0x660000
+		fillCol = 0xb81818
+		dotCol = 0xffaaaa
+	case "gold":
+		hiCol = 0xffea75
+		shCol = 0x7a5700
+		fillCol = 0xdca316
+		dotCol = 0xfff6a8
+	case "emerald":
+		hiCol = 0x70ff94
+		shCol = 0x0c6922
+		fillCol = 0x1db347
+		dotCol = 0xa8ffbe
+	}
+
+	DrawHLine(buf, stride, x+1, y+1, size-2, hiCol)
+	DrawVLine(buf, stride, x+1, y+1, size-2, hiCol)
+	DrawHLine(buf, stride, x+1, y+size-2, size-2, shCol)
+	DrawVLine(buf, stride, x+size-2, y+1, size-2, shCol)
+
+	FillRect(buf, stride, x+2, y+2, size-4, size-4, fillCol)
+
+	switch blockType {
+	case "redstone":
+		FillRect(buf, stride, x+5, y+4, 2, 4, dotCol)
+		FillRect(buf, stride, x+4, y+5, 4, 2, dotCol)
+	case "gold":
+		DrawHLine(buf, stride, x+4, y+4, 3, dotCol)
+		DrawHLine(buf, stride, x+5, y+7, 3, dotCol)
+	case "emerald":
+		FillRect(buf, stride, x+4, y+4, 2, 2, dotCol)
+		FillRect(buf, stride, x+6, y+6, 2, 2, dotCol)
+	}
+}
+
 type Canvas struct {
 	Width  int
 	Height int
@@ -125,15 +261,27 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 	badgeTextPixel := th.BadgeText.ToPixel()
 	mutedTextPixel := th.MutedText.ToPixel()
 
-	FillRect(c.Pixels, c.Stride, 0, 0, c.Width, c.Height, defaultBGPixel)
+	isMC := (th.ID == "minecraft")
 
-	FillRect(c.Pixels, c.Stride, 0, 0, c.Width, HeaderHeight, headerBGPixel)
-	DrawHLine(c.Pixels, c.Stride, 0, HeaderHeight-1, c.Width, headerLinePixel)
+	if isMC {
+		FillPattern16x16(c.Pixels, c.Stride, 0, 0, c.Width, c.Height, &mcDeepslate16x16)
+		DrawHLine(c.Pixels, c.Stride, 0, HeaderHeight-1, c.Width, 0x000000)
+		DrawHLine(c.Pixels, c.Stride, 0, HeaderHeight, c.Width, 0x282f28)
 
-	dotY := HeaderHeight / 2
-	DrawCircle(c.Pixels, c.Stride, 20, dotY, 5, closeDotPixel)
-	DrawCircle(c.Pixels, c.Stride, 36, dotY, 5, minDotPixel)
-	DrawCircle(c.Pixels, c.Stride, 52, dotY, 5, maxDotPixel)
+		DrawMinecraftBlock(c.Pixels, c.Stride, 14, 11, "redstone")
+		DrawMinecraftBlock(c.Pixels, c.Stride, 32, 11, "gold")
+		DrawMinecraftBlock(c.Pixels, c.Stride, 50, 11, "emerald")
+	} else {
+		FillRect(c.Pixels, c.Stride, 0, 0, c.Width, c.Height, defaultBGPixel)
+
+		FillRect(c.Pixels, c.Stride, 0, 0, c.Width, HeaderHeight, headerBGPixel)
+		DrawHLine(c.Pixels, c.Stride, 0, HeaderHeight-1, c.Width, headerLinePixel)
+
+		dotY := HeaderHeight / 2
+		DrawCircle(c.Pixels, c.Stride, 20, dotY, 5, closeDotPixel)
+		DrawCircle(c.Pixels, c.Stride, 36, dotY, 5, minDotPixel)
+		DrawCircle(c.Pixels, c.Stride, 52, dotY, 5, maxDotPixel)
+	}
 
 	titleY := (HeaderHeight - charH) / 2
 	c.TabHitBoxes = nil
@@ -161,16 +309,27 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 		tStartX := curXTab
 		tEndX := curXTab + tabW
 
-		tabBGPixel := headerBGPixel
-		tabFGPixel := mutedTextPixel
-		if tab.Active {
-			tabBGPixel = defaultBGPixel
-			tabFGPixel = th.FG.ToPixel()
-			FillRect(c.Pixels, c.Stride, tStartX, 0, tabW, HeaderHeight, tabBGPixel)
-			DrawVLine(c.Pixels, c.Stride, tStartX, 0, HeaderHeight, headerLinePixel)
-			DrawVLine(c.Pixels, c.Stride, tEndX-1, 0, HeaderHeight, headerLinePixel)
+		if isMC {
+			if tab.Active {
+				FillPattern16x16(c.Pixels, c.Stride, tStartX, 0, tabW, HeaderHeight, &mcDeepslate16x16)
+				DrawRectBorder(c.Pixels, c.Stride, tStartX, 0, tabW, HeaderHeight, 0x000000)
+				DrawHLine(c.Pixels, c.Stride, tStartX+1, 1, tabW-2, 0x5a5e5a)
+				DrawVLine(c.Pixels, c.Stride, tStartX+1, 1, HeaderHeight-2, 0x5a5e5a)
+				DrawVLine(c.Pixels, c.Stride, tEndX-2, 1, HeaderHeight-2, 0x181a18)
+				DrawHLine(c.Pixels, c.Stride, tStartX+1, HeaderHeight-1, tabW-2, 0x181a18)
+			} else {
+				FillRect(c.Pixels, c.Stride, tStartX+1, 3, tabW-2, HeaderHeight-5, 0x121412)
+				DrawRectBorder(c.Pixels, c.Stride, tStartX+1, 3, tabW-2, HeaderHeight-5, 0x0a0c0a)
+				DrawHLine(c.Pixels, c.Stride, tStartX+2, 4, tabW-4, 0x1e221e)
+			}
 		} else {
-			DrawVLine(c.Pixels, c.Stride, tEndX-1, 6, HeaderHeight-12, headerLinePixel)
+			if tab.Active {
+				FillRect(c.Pixels, c.Stride, tStartX, 0, tabW, HeaderHeight, defaultBGPixel)
+				DrawVLine(c.Pixels, c.Stride, tStartX, 0, HeaderHeight, headerLinePixel)
+				DrawVLine(c.Pixels, c.Stride, tEndX-1, 0, HeaderHeight, headerLinePixel)
+			} else {
+				DrawVLine(c.Pixels, c.Stride, tEndX-1, 6, HeaderHeight-12, headerLinePixel)
+			}
 		}
 
 		maxChars := (tabW - 32) / charW
@@ -182,11 +341,27 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 			disp = disp[:maxChars-1] + "…"
 		}
 		tTextY := (HeaderHeight - charH) / 2
-		c.fontEngine.DrawString(c.Pixels, c.Stride, tStartX+10, tTextY, disp, tabFGPixel, tabBGPixel, tab.Active)
-
 		closeX := tEndX - 18
 		closeEndX := tEndX - 4
-		c.fontEngine.DrawString(c.Pixels, c.Stride, closeX, tTextY, "×", mutedTextPixel, tabBGPixel, false)
+
+		if isMC {
+			if tab.Active {
+				c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, tStartX+10, tTextY, disp, 0xffffff, 0x3f3f3f, true)
+				c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, closeX, tTextY, "×", 0xff5555, 0x3f1515, true)
+			} else {
+				c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, tStartX+10, tTextY, disp, 0x888888, 0x222222, false)
+				c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, closeX, tTextY, "×", 0x555555, 0x151515, false)
+			}
+		} else {
+			tabBGPixel := headerBGPixel
+			tabFGPixel := mutedTextPixel
+			if tab.Active {
+				tabBGPixel = defaultBGPixel
+				tabFGPixel = th.FG.ToPixel()
+			}
+			c.fontEngine.DrawString(c.Pixels, c.Stride, tStartX+10, tTextY, disp, tabFGPixel, tabBGPixel, tab.Active)
+			c.fontEngine.DrawString(c.Pixels, c.Stride, closeX, tTextY, "×", mutedTextPixel, tabBGPixel, false)
+		}
 
 		c.TabHitBoxes = append(c.TabHitBoxes, TabHitBox{
 			ID:        tab.ID,
@@ -203,10 +378,15 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 	btnH := 20
 	btnX := curXTab + 6
 	btnY := (HeaderHeight - btnH) / 2
-	DrawRectBorder(c.Pixels, c.Stride, btnX, btnY, btnW, btnH, headerLinePixel)
 	plusCharX := btnX + (btnW-charW)/2
 	plusCharY := (HeaderHeight - charH) / 2
-	c.fontEngine.DrawString(c.Pixels, c.Stride, plusCharX, plusCharY, "+", th.BadgeText.ToPixel(), headerBGPixel, true)
+	if isMC {
+		DrawMinecraftButton(c.Pixels, c.Stride, btnX, btnY, btnW, btnH, false)
+		c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, plusCharX, plusCharY, "+", 0x55ff55, 0x153f15, true)
+	} else {
+		DrawRectBorder(c.Pixels, c.Stride, btnX, btnY, btnW, btnH, headerLinePixel)
+		c.fontEngine.DrawString(c.Pixels, c.Stride, plusCharX, plusCharY, "+", th.BadgeText.ToPixel(), headerBGPixel, true)
+	}
 	c.NewTabHitBox = [4]int{btnX - 2, btnX + btnW + 2, 0, HeaderHeight}
 
 	if hudInfo == "" {
@@ -215,7 +395,11 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 	hudLen := len(hudInfo)
 	hudX := c.Width - (hudLen * charW) - 18
 	if hudX > 70+(12*charW) {
-		c.fontEngine.DrawString(c.Pixels, c.Stride, hudX, titleY, hudInfo, badgeTextPixel, headerBGPixel, false)
+		if isMC {
+			c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, hudX, titleY, hudInfo, 0x55ffff, 0x153f3f, true)
+		} else {
+			c.fontEngine.DrawString(c.Pixels, c.Stride, hudX, titleY, hudInfo, badgeTextPixel, headerBGPixel, false)
+		}
 	}
 
 	// Render diagnostic notification chip in header bar between tabs and grid size
@@ -238,8 +422,13 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 				if diag.IsError {
 					chipColor = th.CloseDot.ToPixel() // Red error
 				}
-				DrawRectBorder(c.Pixels, c.Stride, chipX, chipY, chipW, chipH, chipColor)
-				c.fontEngine.DrawString(c.Pixels, c.Stride, chipX+8, chipY+(chipH-charH)/2, diagMsg, chipColor, headerBGPixel, true)
+				if isMC {
+					DrawMinecraftButton(c.Pixels, c.Stride, chipX, chipY, chipW, chipH, false)
+					c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, chipX+8, chipY+(chipH-charH)/2, diagMsg, chipColor, MinecraftShadow(chipColor), true)
+				} else {
+					DrawRectBorder(c.Pixels, c.Stride, chipX, chipY, chipW, chipH, chipColor)
+					c.fontEngine.DrawString(c.Pixels, c.Stride, chipX+8, chipY+(chipH-charH)/2, diagMsg, chipColor, headerBGPixel, true)
+				}
 			}
 		}
 	}
@@ -302,7 +491,27 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 
 			isCursor := (x == curX && y == effectiveCurY && effectiveCurY < c.rows && curVis && cursorBlink)
 			if isCursor {
-				fg, bg = bg, th.Cursor
+				if isMC {
+					DrawRectBorder(c.Pixels, c.Stride, cellX, cellY, charW, charH, 0x000000)
+					FillRect(c.Pixels, c.Stride, cellX+1, cellY+1, charW-2, charH-2, 0x55ffff)
+					DrawHLine(c.Pixels, c.Stride, cellX+1, cellY+1, charW-2, 0xaaffff)
+					DrawVLine(c.Pixels, c.Stride, cellX+1, cellY+1, charH-2, 0xaaffff)
+					DrawHLine(c.Pixels, c.Stride, cellX+1, cellY+charH-2, charW-2, 0x008888)
+					DrawVLine(c.Pixels, c.Stride, cellX+charW-2, cellY+1, charH-2, 0x008888)
+					fgPixel := uint32(0x000000)
+					bgPixel := uint32(0x55ffff)
+					char := cell.Char
+					if char == 0 {
+						char = ' '
+					}
+					if char != ' ' {
+						mask := c.fontEngine.GetGlyph(char, cell.Bold)
+						DrawGlyphBlit(c.Pixels, c.Stride, cellX, cellY, mask, fgPixel, bgPixel, false, baseline)
+					}
+					continue
+				} else {
+					fg, bg = bg, th.Cursor
+				}
 			}
 
 			fgPixel := fg.ToPixel()
@@ -323,7 +532,11 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 			}
 
 			mask := c.fontEngine.GetGlyph(char, cell.Bold)
-			DrawGlyphBlit(c.Pixels, c.Stride, cellX, cellY, mask, fgPixel, bgPixel, cell.Underline || isHoveredURL, baseline)
+			if isMC && bg == th.BG && !isSearchMatch && !term.IsSelectedLocked(x, y) {
+				DrawGlyphBlitTransparent(c.Pixels, c.Stride, cellX, cellY, mask, fgPixel, cell.Underline || isHoveredURL, baseline)
+			} else {
+				DrawGlyphBlit(c.Pixels, c.Stride, cellX, cellY, mask, fgPixel, bgPixel, cell.Underline || isHoveredURL, baseline)
+			}
 		}
 	}
 
@@ -439,6 +652,99 @@ func (c *Canvas) RenderPreferencesModal(th *terminal.Theme, selectedIdx int, opt
 	charW := c.fontEngine.CharWidth()
 	charH := c.fontEngine.CharHeight()
 
+	if th.ID == "minecraft" {
+		modalW = 460
+		rowH = 32
+		headerH := 40
+		footerH := 36
+		modalH = headerH + len(options)*rowH + footerH
+
+		if modalW > c.Width-40 {
+			modalW = c.Width - 40
+		}
+		if modalH > c.Height-40 {
+			modalH = c.Height - 40
+		}
+
+		modalX = (c.Width - modalW) / 2
+		modalY = (c.Height - modalH) / 2
+
+		// 1. Tiled Minecraft Dirt menu background
+		FillPattern16x16(c.Pixels, c.Stride, modalX, modalY, modalW, modalH, &mcDirt16x16)
+
+		// 2. 3-layer beveled Minecraft GUI Container border
+		DrawRectBorder(c.Pixels, c.Stride, modalX, modalY, modalW, modalH, 0x000000)
+		DrawRectBorder(c.Pixels, c.Stride, modalX+1, modalY+1, modalW-2, modalH-2, 0x000000)
+		DrawHLine(c.Pixels, c.Stride, modalX+2, modalY+2, modalW-4, 0xc6c6c6)
+		DrawVLine(c.Pixels, c.Stride, modalX+2, modalY+2, modalH-4, 0xc6c6c6)
+		DrawHLine(c.Pixels, c.Stride, modalX+2, modalY+modalH-3, modalW-4, 0x373737)
+		DrawVLine(c.Pixels, c.Stride, modalX+modalW-3, modalY+2, modalH-4, 0x373737)
+
+		// Header separator groove
+		DrawHLine(c.Pixels, c.Stride, modalX+4, modalY+headerH-2, modalW-8, 0x140e09)
+		DrawHLine(c.Pixels, c.Stride, modalX+4, modalY+headerH-1, modalW-8, 0x3e291c)
+
+		// Header Title: Centered glowing Minecraft yellow with dark drop shadow
+		title := "PREFERENCES // THEME SELECTOR"
+		titleX := modalX + (modalW-len(title)*charW)/2
+		c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, titleX, modalY+(headerH-charH)/2, title, 0xffff55, 0x3f3f15, true)
+
+		// Option Rows as Real Minecraft 3D Buttons
+		optStartY := modalY + headerH + 4
+		for i, opt := range options {
+			rowY := optStartY + i*rowH
+			isSelected := (i == selectedIdx)
+			isSaved := (opt.ID == savedID)
+
+			btnX := modalX + 12
+			btnW := modalW - 24
+			btnH := rowH - 4
+
+			DrawMinecraftButton(c.Pixels, c.Stride, btnX, rowY, btnW, btnH, isSelected)
+
+			textY := rowY + (btnH-charH)/2
+			prefix := "  "
+			labelColor := uint32(0xe0e0e0)
+			labelShadow := uint32(0x383838)
+			subColor := uint32(0xaaaaaa)
+			subShadow := uint32(0x282828)
+
+			if isSelected {
+				prefix = "> "
+				labelColor = 0xffffa0
+				labelShadow = 0x3f3f20
+				subColor = 0x55ffff
+				subShadow = 0x153f3f
+			}
+
+			c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, btnX+12, textY, prefix+opt.Label, labelColor, labelShadow, isSelected)
+
+			if opt.Sublabel != "" {
+				subX := btnX + 12 + len(prefix+opt.Label)*charW + 10
+				if subX < btnX+btnW-110 {
+					c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, subX, textY, "("+opt.Sublabel+")", subColor, subShadow, false)
+				}
+			}
+
+			if isSaved {
+				activeBadge := "[SAVED]"
+				badgeX := btnX + btnW - (len(activeBadge) * charW) - 14
+				c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, badgeX, textY, activeBadge, 0x55ff55, 0x153f15, true)
+			}
+		}
+
+		// Footer separator groove
+		footerY := modalY + modalH - footerH
+		DrawHLine(c.Pixels, c.Stride, modalX+4, footerY, modalW-8, 0x140e09)
+		DrawHLine(c.Pixels, c.Stride, modalX+4, footerY+1, modalW-8, 0x3e291c)
+
+		hints := "UP/DOWN: Preview  ENTER: Save  ESC: Exit"
+		hintsX := modalX + (modalW-len(hints)*charW)/2
+		c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, hintsX, footerY+(footerH-charH)/2, hints, 0xa0a0a0, 0x282828, false)
+
+		return modalX, modalY, modalW, modalH, rowH
+	}
+
 	modalW = 440
 	rowH = 28
 	headerH := 36
@@ -492,13 +798,15 @@ func (c *Canvas) RenderPreferencesModal(th *terminal.Theme, selectedIdx int, opt
 		}
 		c.fontEngine.DrawString(c.Pixels, c.Stride, modalX+14, textY, prefix+opt.Label, fgPix, bgPix, isSelected)
 
-		subX := modalX + 14 + len(prefix+opt.Label)*charW + 12
-		if subX < modalX+modalW-120 {
-			subColor := mutedTextPixel
-			if isSelected {
-				subColor = selFGPixel
+		if opt.Sublabel != "" {
+			subX := modalX + 14 + len(prefix+opt.Label)*charW + 12
+			if subX < modalX+modalW-120 {
+				subColor := mutedTextPixel
+				if isSelected {
+					subColor = selFGPixel
+				}
+				c.fontEngine.DrawString(c.Pixels, c.Stride, subX, textY, "("+opt.Sublabel+")", subColor, bgPix, false)
 			}
-			c.fontEngine.DrawString(c.Pixels, c.Stride, subX, textY, "("+opt.Sublabel+")", subColor, bgPix, false)
 		}
 
 		if isSaved {
@@ -533,6 +841,48 @@ func (c *Canvas) RenderSearchBar(th *terminal.Theme, query string, matchIdx, tot
 	}
 	barX = c.Width - barW - 20
 	barY = HeaderHeight + 8
+
+	if th.ID == "minecraft" {
+		FillRect(c.Pixels, c.Stride, barX, barY, barW, barH, 0x141614)
+		DrawRectBorder(c.Pixels, c.Stride, barX, barY, barW, barH, 0x000000)
+		DrawHLine(c.Pixels, c.Stride, barX+1, barY+1, barW-2, 0x101010)
+		DrawVLine(c.Pixels, c.Stride, barX+1, barY+1, barH-2, 0x101010)
+		DrawHLine(c.Pixels, c.Stride, barX+1, barY+barH-2, barW-2, 0x555555)
+		DrawVLine(c.Pixels, c.Stride, barX+barW-2, barY+1, barH-2, 0x555555)
+
+		prefix := "FIND: "
+		c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, barX+12, barY+(barH-charH)/2, prefix, 0x55ffff, 0x153f3f, true)
+
+		textX := barX + 12 + len(prefix)*charW
+		dispQuery := query
+		if dispQuery == "" {
+			dispQuery = "_"
+		}
+		maxQueryChars := (barW - (len(prefix)+14)*charW)
+		if len(dispQuery)*charW > maxQueryChars && maxQueryChars > 0 {
+			dispQuery = dispQuery[len(dispQuery)-(maxQueryChars/charW):]
+		}
+		c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, textX, barY+(barH-charH)/2, dispQuery, 0xffffff, 0x3f3f3f, false)
+
+		countStr := fmt.Sprintf("(%d/%d)", matchIdx, totalMatches)
+		if totalMatches == 0 && query != "" {
+			countStr = "(0/0)"
+		} else if query == "" {
+			countStr = ""
+		}
+		if countStr != "" {
+			countX := barX + barW - len(countStr)*charW - 12
+			if countX > textX+len(dispQuery)*charW+8 {
+				cntColor := uint32(0x888888)
+				if totalMatches > 0 {
+					cntColor = 0x55ff55
+				}
+				c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, countX, barY+(barH-charH)/2, countStr, cntColor, MinecraftShadow(cntColor), false)
+			}
+		}
+
+		return barX, barY, barW, barH
+	}
 
 	bgPix := th.HeaderBG.ToPixel()
 	borderPix := th.Border.ToPixel()
@@ -614,6 +964,88 @@ func (c *Canvas) RenderPasteConfirmModal(th *terminal.Theme, content string, war
 
 	modalX = (c.Width - modalW) / 2
 	modalY = (c.Height - modalH) / 2
+
+	if th.ID == "minecraft" {
+		FillPattern16x16(c.Pixels, c.Stride, modalX, modalY, modalW, modalH, &mcDirt16x16)
+		DrawRectBorder(c.Pixels, c.Stride, modalX, modalY, modalW, modalH, 0x000000)
+		DrawRectBorder(c.Pixels, c.Stride, modalX+1, modalY+1, modalW-2, modalH-2, 0x000000)
+		DrawHLine(c.Pixels, c.Stride, modalX+2, modalY+2, modalW-4, 0xc6c6c6)
+		DrawVLine(c.Pixels, c.Stride, modalX+2, modalY+2, modalH-4, 0xc6c6c6)
+		DrawHLine(c.Pixels, c.Stride, modalX+2, modalY+modalH-3, modalW-4, 0x373737)
+		DrawVLine(c.Pixels, c.Stride, modalX+modalW-3, modalY+2, modalH-4, 0x373737)
+
+		titleStr := "PASTE CONFIRMATION // SAFE REVIEW"
+		c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, modalX+16, modalY+(headerH-charH)/2, titleStr, 0xffff55, 0x3f3f15, true)
+		DrawHLine(c.Pixels, c.Stride, modalX+4, modalY+headerH-1, modalW-8, 0x140e09)
+
+		bannerY := modalY + headerH + 6
+		bannerX := modalX + 14
+		bannerW := modalW - 28
+		DrawMinecraftButton(c.Pixels, c.Stride, bannerX, bannerY, bannerW, bannerH, false)
+
+		bannerMsg := "! Multiline paste detected: commands will execute immediately without confirmation!"
+		if len(warnings) > 0 {
+			bannerMsg = "! " + warnings[0]
+		} else if isLarge {
+			bannerMsg = "! Large payload detected: pasting may freeze or slow the shell!"
+		}
+		maxBannerChars := (bannerW - 20) / charW
+		if len(bannerMsg) > maxBannerChars && maxBannerChars > 3 {
+			bannerMsg = bannerMsg[:maxBannerChars-3] + "..."
+		}
+		c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, bannerX+10, bannerY+(bannerH-charH)/2, bannerMsg, 0xffaa00, 0x3f2a00, true)
+
+		boxX := modalX + 14
+		boxY := bannerY + bannerH + 8
+		boxW := modalW - 28
+		boxH := modalH - (boxY - modalY) - footerH - 10
+		if boxH < 30 {
+			boxH = 30
+		}
+		FillRect(c.Pixels, c.Stride, boxX, boxY, boxW, boxH, 0x141614)
+		DrawRectBorder(c.Pixels, c.Stride, boxX, boxY, boxW, boxH, 0x000000)
+		DrawHLine(c.Pixels, c.Stride, boxX+1, boxY+1, boxW-2, 0x101010)
+		DrawVLine(c.Pixels, c.Stride, boxX+1, boxY+1, boxH-2, 0x101010)
+		DrawHLine(c.Pixels, c.Stride, boxX+1, boxY+boxH-2, boxW-2, 0x555555)
+		DrawVLine(c.Pixels, c.Stride, boxX+boxW-2, boxY+1, boxH-2, 0x555555)
+
+		maxLineChars := (boxW - 48) / charW
+		if maxLineChars < 10 {
+			maxLineChars = 10
+		}
+		rowStartY := boxY + 8
+		for i, l := range previewLines {
+			lineY := rowStartY + i*previewRowH
+			if lineY+charH > boxY+boxH {
+				break
+			}
+			numStr := fmt.Sprintf("%2d ", i+1)
+			c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, boxX+10, lineY, numStr, 0x888888, 0x222222, false)
+
+			cleanL := strings.ReplaceAll(l, "\t", "    ")
+			if len(cleanL) > maxLineChars {
+				cleanL = cleanL[:maxLineChars-3] + "..."
+			}
+			c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, boxX+10+len(numStr)*charW, lineY, cleanL, 0xe0e0e0, 0x383838, false)
+		}
+
+		footerY := modalY + modalH - footerH
+		DrawHLine(c.Pixels, c.Stride, modalX+4, footerY, modalW-8, 0x140e09)
+
+		hints := "[ENTER] Paste All   [S] Single Line"
+		if isURL {
+			hints += "   [Q] Quoted"
+		}
+		hints += "   [ESC] Cancel"
+
+		hintsX := modalX + (modalW-len(hints)*charW)/2
+		if hintsX < modalX+12 {
+			hintsX = modalX + 12
+		}
+		c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, hintsX, footerY+(footerH-charH)/2, hints, 0xa0a0a0, 0x282828, false)
+
+		return modalX, modalY, modalW, modalH
+	}
 
 	modalBGPixel := th.HeaderBG.ToPixel()
 	modalHeaderBGPixel := th.BG.ToPixel()

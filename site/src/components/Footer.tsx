@@ -13,7 +13,7 @@ export const Footer: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-5 text-[11px]">
-          <span>MIT License</span>
+          <span>GNU GPLv3 License</span>
           <span className="text-[#292e42]">&bull;</span>
           <a
             href="https://github.com/vixland4509/Terrat"

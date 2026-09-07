@@ -91,7 +91,7 @@ export const HeroTerminal: React.FC = () => {
           <div className="text-[#565f89]">Flags:</div>
           <div className="pl-4 space-y-0.5">
             <div><span className="text-[#7aa2f7]">-config</span> string&nbsp;&nbsp;&nbsp;&nbsp;Path to JSON config (default ~/.config/terrat/config.json)</div>
-            <div><span className="text-[#7aa2f7]">-theme</span> string&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Color theme (tokyo-night, catppuccin-mocha, tokyo-day, solarized-light)</div>
+            <div><span className="text-[#7aa2f7]">-theme</span> string&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Color theme (tokyo-night, catppuccin-mocha, minecraft, tokyo-day, solarized-light)</div>
             <div><span className="text-[#7aa2f7]">-font-size</span> float&nbsp;Base font size in points (default 12.0)</div>
             <div><span className="text-[#7aa2f7]">-opacity</span> float&nbsp;&nbsp;&nbsp;Window transparency alpha [0.2 - 1.0] (default 0.95)</div>
             <div><span className="text-[#7aa2f7]">-v, --version</span>&nbsp;&nbsp;&nbsp;&nbsp;Print version and exit</div>

@@ -198,3 +198,82 @@ func TestSetScrollOff(t *testing.T) {
 	}
 }
 
+func TestEditorAlternateScreenAndMargins(t *testing.T) {
+	term := New(80, 24)
+
+	// Shell output before launching editor
+	term.Write([]byte("user@box:~$ nano myfile.txt\r\n"))
+	initialScrollback := term.ScrollbackLen()
+
+	// Nano enters alternate screen and restricts scroll margin
+	term.Write([]byte("\x1b[?1049h"))
+	if !term.IsAlt() {
+		t.Fatalf("expected alt screen to be active")
+	}
+
+	// Nano sets top/bottom margins (e.g. lines 2 to 22)
+	term.Write([]byte("\x1b[2;22r"))
+	// Nano writes content and scrolls within its window
+	for i := 0; i < 50; i++ {
+		term.Write([]byte(fmt.Sprintf("editor content line %d\r\n", i)))
+	}
+
+	// In alternate screen, scrollback must NOT grow!
+	if term.ScrollbackLen() != initialScrollback {
+		t.Fatalf("scrollback increased inside alternate screen: before %d, now %d", initialScrollback, term.ScrollbackLen())
+	}
+
+	// Nano exits: leaves alternate screen
+	term.Write([]byte("\x1b[?1049l"))
+	if term.IsAlt() {
+		t.Fatalf("expected alt screen to be inactive after exit")
+	}
+
+	// Margins must be restored to full terminal (0 to 23), not trapped in nano's 2..22
+	if term.scrollTop != 0 || term.scrollBottom != 23 {
+		t.Fatalf("scroll margins were not reset upon exiting alt screen: top=%d, bottom=%d", term.scrollTop, term.scrollBottom)
+	}
+
+	// Subsequent shell outputs should not push unexpected garbage or be clipped
+	term.Write([]byte("user@box:~$ echo hello\r\n"))
+}
+
+func TestEditorCSICommands(t *testing.T) {
+	term := New(80, 24)
+
+	// Test VPA (CSI d)
+	term.Write([]byte("\x1b[10d"))
+	_, y, _ := term.Cursor()
+	if y != 9 {
+		t.Fatalf("expected cursor Y to be 9 after CSI 10d, got %d", y)
+	}
+
+	// Test ICH (CSI @) and ECH (CSI X)
+	term.Write([]byte("\x1b[1;1HABCDEF"))
+	term.Write([]byte("\x1b[1;3H\x1b[2@")) // Insert 2 spaces at col 3 (0-indexed 2)
+	rowStr := term.GetRowString(0)
+	if !strings.HasPrefix(rowStr, "AB  CD") {
+		t.Fatalf("expected row to start with 'AB  CD' after ICH, got %q", rowStr[:10])
+	}
+
+	term.Write([]byte("\x1b[1;1H\x1b[2X")) // Erase 2 characters at col 1
+	rowStr = term.GetRowString(0)
+	if !strings.HasPrefix(rowStr, "    CD") {
+		t.Fatalf("expected row to start with '    CD' after ECH, got %q", rowStr[:10])
+	}
+
+	// Test SU (CSI S) and SD (CSI T)
+	term.Write([]byte("\x1b[1;1HTOP_LINE\r\nSECOND_LINE"))
+	term.Write([]byte("\x1b[1S")) // Scroll up 1
+	r0 := term.GetRowString(0)
+	if !strings.HasPrefix(r0, "SECOND_LINE") {
+		t.Fatalf("expected row 0 to be 'SECOND_LINE' after SU, got %q", r0[:15])
+	}
+
+	term.Write([]byte("\x1b[1T")) // Scroll down 1
+	r1 := term.GetRowString(1)
+	if !strings.HasPrefix(r1, "SECOND_LINE") {
+		t.Fatalf("expected row 1 to be 'SECOND_LINE' after SD, got %q", r1[:15])
+	}
+}
+

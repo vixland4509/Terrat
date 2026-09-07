@@ -38,6 +38,11 @@ type Terminal struct {
 	cursorVisible bool
 	savedX        int
 	savedY        int
+	savedFG       Color
+	savedBG       Color
+	savedBold     bool
+	savedUnderline bool
+	savedInverse  bool
 
 	currFG        Color
 	currBG        Color
@@ -560,12 +565,10 @@ func (t *Terminal) processRune(r rune) {
 		case '(':
 			t.state = stateCharset
 		case '7':
-			t.savedX = t.cursorX
-			t.savedY = t.cursorY
+			t.saveCursor()
 			t.state = stateNormal
 		case '8':
-			t.cursorX = t.savedX
-			t.cursorY = t.savedY
+			t.restoreCursor()
 			t.state = stateNormal
 		case 'M':
 			t.reverseIndex()
@@ -681,6 +684,39 @@ func (t *Terminal) reverseIndex() {
 		t.cursorY--
 		t.markRowDirty(t.cursorY)
 	}
+}
+
+func (t *Terminal) saveCursor() {
+	t.savedX = t.cursorX
+	t.savedY = t.cursorY
+	t.savedFG = t.currFG
+	t.savedBG = t.currBG
+	t.savedBold = t.currBold
+	t.savedUnderline = t.currUnderline
+	t.savedInverse = t.currInverse
+}
+
+func (t *Terminal) restoreCursor() {
+	t.cursorX = t.savedX
+	t.cursorY = t.savedY
+	if t.cursorX >= t.cols {
+		t.cursorX = t.cols - 1
+	}
+	if t.cursorX < 0 {
+		t.cursorX = 0
+	}
+	if t.cursorY >= t.rows {
+		t.cursorY = t.rows - 1
+	}
+	if t.cursorY < 0 {
+		t.cursorY = 0
+	}
+	t.currFG = t.savedFG
+	t.currBG = t.savedBG
+	t.currBold = t.savedBold
+	t.currUnderline = t.savedUnderline
+	t.currInverse = t.savedInverse
+	t.markRowDirty(t.cursorY)
 }
 
 func (t *Terminal) executeCSI(cmd rune) {
@@ -814,26 +850,82 @@ func (t *Terminal) executeCSI(cmd rune) {
 		}
 		t.markRowDirty(t.cursorY)
 
-	case 'L':
+	case 'd':
+		row := arg(0, 1) - 1
+		if row < 0 {
+			row = 0
+		}
+		if row >= t.rows {
+			row = t.rows - 1
+		}
+		t.cursorY = row
+		t.markRowDirty(t.cursorY)
+
+	case 'S':
+		n := arg(0, 1)
+		t.scrollUp(n)
+
+	case 'T':
 		n := arg(0, 1)
 		for i := 0; i < n; i++ {
-			for r := t.scrollBottom; r > t.cursorY; r-- {
+			for r := t.scrollBottom; r > t.scrollTop; r-- {
 				grid[r] = grid[r-1]
 				t.markRowDirty(r)
 			}
-			grid[t.cursorY] = t.makeRow()
-			t.markRowDirty(t.cursorY)
+			grid[t.scrollTop] = t.makeRow()
+			t.markRowDirty(t.scrollTop)
+		}
+
+	case '@':
+		n := arg(0, 1)
+		row := grid[t.cursorY]
+		for c := t.cols - 1; c >= t.cursorX; c-- {
+			if c-n >= t.cursorX {
+				row[c] = row[c-n]
+			} else {
+				row[c] = EmptyCell()
+			}
+		}
+		t.markRowDirty(t.cursorY)
+
+	case 'X':
+		n := arg(0, 1)
+		row := grid[t.cursorY]
+		for c := t.cursorX; c < t.cursorX+n && c < t.cols; c++ {
+			row[c] = EmptyCell()
+		}
+		t.markRowDirty(t.cursorY)
+
+	case 's':
+		t.saveCursor()
+
+	case 'u':
+		t.restoreCursor()
+
+	case 'L':
+		if t.cursorY >= t.scrollTop && t.cursorY <= t.scrollBottom {
+			n := arg(0, 1)
+			for i := 0; i < n; i++ {
+				for r := t.scrollBottom; r > t.cursorY; r-- {
+					grid[r] = grid[r-1]
+					t.markRowDirty(r)
+				}
+				grid[t.cursorY] = t.makeRow()
+				t.markRowDirty(t.cursorY)
+			}
 		}
 
 	case 'M':
-		n := arg(0, 1)
-		for i := 0; i < n; i++ {
-			for r := t.cursorY; r < t.scrollBottom; r++ {
-				grid[r] = grid[r+1]
-				t.markRowDirty(r)
+		if t.cursorY >= t.scrollTop && t.cursorY <= t.scrollBottom {
+			n := arg(0, 1)
+			for i := 0; i < n; i++ {
+				for r := t.cursorY; r < t.scrollBottom; r++ {
+					grid[r] = grid[r+1]
+					t.markRowDirty(r)
+				}
+				grid[t.scrollBottom] = t.makeRow()
+				t.markRowDirty(t.scrollBottom)
 			}
-			grid[t.scrollBottom] = t.makeRow()
-			t.markRowDirty(t.scrollBottom)
 		}
 
 	case 'P':
@@ -854,6 +946,9 @@ func (t *Terminal) executeCSI(cmd rune) {
 		if top >= 0 && bottom < t.rows && top < bottom {
 			t.scrollTop = top
 			t.scrollBottom = bottom
+		} else {
+			t.scrollTop = 0
+			t.scrollBottom = t.rows - 1
 		}
 
 	case 'm':
@@ -866,8 +961,35 @@ func (t *Terminal) executeCSI(cmd rune) {
 			switch mode {
 			case 25:
 				t.cursorVisible = enable
-			case 1049, 47:
+			case 1047, 47:
 				t.isAlt = enable
+				t.scrollTop = 0
+				t.scrollBottom = t.rows - 1
+				t.scrollOff = 0
+				t.dirtyAll = true
+			case 1048:
+				if enable {
+					t.saveCursor()
+				} else {
+					t.restoreCursor()
+				}
+			case 1049:
+				if enable {
+					t.saveCursor()
+					t.isAlt = true
+					for r := 0; r < t.rows; r++ {
+						t.altLines[r] = t.makeRow()
+					}
+					t.scrollTop = 0
+					t.scrollBottom = t.rows - 1
+					t.scrollOff = 0
+				} else {
+					t.isAlt = false
+					t.restoreCursor()
+					t.scrollTop = 0
+					t.scrollBottom = t.rows - 1
+					t.scrollOff = 0
+				}
 				t.dirtyAll = true
 			case 2004:
 				t.bracketedPaste = enable

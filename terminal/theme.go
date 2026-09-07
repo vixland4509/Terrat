@@ -117,9 +117,34 @@ var ThemeSolarizedLight = &Theme{
 	},
 }
 
+var ThemeMinecraft = &Theme{
+	ID:          "minecraft",
+	Name:        "Minecraft",
+	Category:    "Dark",
+	IsDark:      true,
+	BG:          Color(0x191c19),
+	FG:          Color(0xe4e7dd),
+	HeaderBG:    Color(0x131513),
+	HeaderLine:  Color(0x282f28),
+	Border:      Color(0x3e473e),
+	Cursor:      Color(0x55ffff),
+	SelectionBG: Color(0x2b4736),
+	SelectionFG: Color(0xffffff),
+	BadgeText:   Color(0x55ff55),
+	MutedText:   Color(0x6e786d),
+	CloseDot:    Color(0xff4747),
+	MinDot:      Color(0xffaa00),
+	MaxDot:      Color(0x55ff55),
+	ANSI: [16]Color{
+		0x1e231f, 0xb83333, 0x438e3e, 0xd98d1a, 0x3c59a6, 0x9844b7, 0x2b999d, 0xa8b0a5,
+		0x5e685c, 0xff5555, 0x55ff55, 0xffff55, 0x5a78ff, 0xe37bfb, 0x55ffff, 0xffffff,
+	},
+}
+
 var AllThemes = []*Theme{
 	ThemeTokyoNight,
 	ThemeCatppuccinMocha,
+	ThemeMinecraft,
 	ThemeTokyoDay,
 	ThemeSolarizedLight,
 }
@@ -139,6 +164,8 @@ func ResolveTheme(pref string, isSystemDark bool) *Theme {
 		return ThemeTokyoNight
 	case "catppuccin-mocha":
 		return ThemeCatppuccinMocha
+	case "minecraft":
+		return ThemeMinecraft
 	case "tokyo-day":
 		return ThemeTokyoDay
 	case "solarized-light":

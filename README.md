@@ -203,7 +203,7 @@ Settings are saved automatically in `~/.config/terrat/config.json`:
 }
 ```
 
-- `theme`: `"auto"`, `"tokyo-night"`, `"catppuccin-mocha"`, `"tokyo-day"`, or `"solarized-light"`.
+- `theme`: `"auto"`, `"tokyo-night"`, `"catppuccin-mocha"`, `"minecraft"`, `"tokyo-day"`, or `"solarized-light"`.
 - `font_size`: Floating-point font size in points (`8.0` to `32.0`).
 - `opacity`: Window opacity from `0.20` to `1.0` (compositor required for transparency).
 - `ghost_text`: Enable/disable inline command autosuggestions (`true` or `false`).
@@ -251,4 +251,4 @@ terrat -e /bin/zsh
 
 ## License
 
-Open source under the [MIT License](LICENSE).
+Open source under the [GNU General Public License v3.0 (GPLv3)](LICENSE).

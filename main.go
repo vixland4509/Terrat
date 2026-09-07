@@ -70,6 +70,7 @@ func main() {
 	versionFlag := fs.Bool("version", false, "Print version and exit")
 	titleFlag := fs.String("title", AppName, "Set initial window title")
 	fontSizeFlag := fs.Float64("font-size", 0.0, "Font size in points (defaults to config)")
+	themeFlag := fs.String("theme", "", "Color theme override (tokyo-night, catppuccin-mocha, minecraft, tokyo-day, solarized-light)")
 	_ = fs.Parse(remainingArgs)
 
 	if *verFlag || *versionFlag {
@@ -80,6 +81,9 @@ func main() {
 	appConfig := config.Load()
 	if *fontSizeFlag > 0 {
 		appConfig.FontSize = *fontSizeFlag
+	}
+	if *themeFlag != "" {
+		appConfig.Theme = *themeFlag
 	}
 
 	fontEngine, err := render.NewFontEngine(appConfig.FontSize)
@@ -113,6 +117,7 @@ func main() {
 		{ID: "auto", Label: "System Auto Detect", Sublabel: "Follow OS Dark/Light"},
 		{ID: "tokyo-night", Label: "Tokyo Night", Sublabel: "Dark / Midnight Blue"},
 		{ID: "catppuccin-mocha", Label: "Catppuccin Mocha", Sublabel: "Dark / Velvet Charcoal"},
+		{ID: "minecraft", Label: "Minecraft", Sublabel: ""},
 		{ID: "tokyo-day", Label: "Tokyo Day", Sublabel: "Light / Crisp Sunlight"},
 		{ID: "solarized-light", Label: "Solarized Light", Sublabel: "Light / Warm Parchment"},
 	}

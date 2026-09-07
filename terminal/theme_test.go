@@ -9,6 +9,9 @@ func TestThemeResolution(t *testing.T) {
 	if th := ResolveTheme("catppuccin-mocha", false); th.ID != "catppuccin-mocha" {
 		t.Fatalf("expected catppuccin-mocha, got %s", th.ID)
 	}
+	if th := ResolveTheme("minecraft", false); th.ID != "minecraft" {
+		t.Fatalf("expected minecraft, got %s", th.ID)
+	}
 	if th := ResolveTheme("tokyo-day", true); th.ID != "tokyo-day" {
 		t.Fatalf("expected tokyo-day, got %s", th.ID)
 	}
@@ -36,6 +39,11 @@ func TestTerminalSetTheme(t *testing.T) {
 	term.SetTheme(ThemeCatppuccinMocha)
 	if term.Theme().ID != "catppuccin-mocha" {
 		t.Fatalf("expected catppuccin-mocha, got %s", term.Theme().ID)
+	}
+
+	term.SetTheme(ThemeMinecraft)
+	if term.Theme().ID != "minecraft" {
+		t.Fatalf("expected minecraft, got %s", term.Theme().ID)
 	}
 
 	term.SetTheme(ThemeTokyoDay)
