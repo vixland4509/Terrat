@@ -33,6 +33,7 @@ Most terminal emulators today fall into two frustrating extremes:
 
 **TerraTerminal (`terrat`)** takes a radically simpler path:
 - **100% Pure Go:** Directly communicates with the X11 display server through the raw wire protocol (`xgb`). Zero CGO, zero system library headaches.
+- **Universal Desktop Compatibility:** Runs smoothly across all Linux desktop environments and window managers (GNOME, KDE Plasma, XFCE, Cinnamon, MATE, LXQt, i3, bspwm, Hyprland, Sway, etc.) via X11 or XWayland.
 - **Microsecond cold boot:** Pops up on your screen in less than **5 milliseconds**.
 - **Flyweight memory footprint:** Stays under **~11MB RSS** in everyday use.
 - **Hardware-smooth visuals:** True double-buffering via server-side pixmaps completely eliminates window tearing and resize flicker.
@@ -217,7 +218,7 @@ Settings are saved automatically in `~/.config/terrat/config.json`:
 ## Installation
 
 ### Prerequisites
-- Linux with an X11 display server (or XWayland).
+- Linux with any desktop environment or window manager (GNOME, KDE Plasma, XFCE, Cinnamon, MATE, LXQt, i3, bspwm, Hyprland, Sway, etc.) via X11 or XWayland.
 - Go 1.21+ (only required for building from source).
 
 ### Build from Source
