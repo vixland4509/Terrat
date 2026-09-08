@@ -55,9 +55,14 @@ type Terminal struct {
 	scrollTop    int
 	scrollBottom int
 
+	appCursor     bool
+	mouseTracking bool
+	mouseSGR      bool
+
 	state      parserState
 	csiParams  []string
 	csiPrivate bool
+	csiLeader  rune
 	oscBuffer  []rune
 
 	title        string
@@ -199,6 +204,30 @@ func (t *Terminal) BracketedPaste() bool {
 
 func (t *Terminal) BracketedPasteLocked() bool {
 	return t.bracketedPaste
+}
+
+func (t *Terminal) AppCursor() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.appCursor
+}
+
+func (t *Terminal) AppCursorLocked() bool {
+	return t.appCursor
+}
+
+func (t *Terminal) MouseTracking() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.mouseTracking
+}
+
+func (t *Terminal) MouseTrackingLocked() bool {
+	return t.mouseTracking
+}
+
+func (t *Terminal) MouseSGRLocked() bool {
+	return t.mouseSGR
 }
 
 func (t *Terminal) ScrollOff() int {
@@ -582,6 +611,7 @@ func (t *Terminal) processRune(r rune) {
 			t.state = stateCSI
 			t.csiParams = nil
 			t.csiPrivate = false
+			t.csiLeader = 0
 		case ']':
 			t.state = stateOSC
 			t.oscBuffer = nil
@@ -596,6 +626,12 @@ func (t *Terminal) processRune(r rune) {
 		case 'M':
 			t.reverseIndex()
 			t.state = stateNormal
+		case '=':
+			// DECKPAM (Application Keypad)
+			t.state = stateNormal
+		case '>':
+			// DECKPNM (Normal Keypad)
+			t.state = stateNormal
 		default:
 			t.state = stateNormal
 		}
@@ -604,8 +640,11 @@ func (t *Terminal) processRune(r rune) {
 		t.state = stateNormal
 
 	case stateCSI:
-		if r == '?' {
-			t.csiPrivate = true
+		if r == '?' || r == '>' || r == '=' {
+			t.csiLeader = r
+			if r == '?' {
+				t.csiPrivate = true
+			}
 			return
 		}
 		if (r >= '0' && r <= '9') || r == ';' {
@@ -1040,10 +1079,18 @@ func (t *Terminal) executeCSI(cmd rune) {
 		}
 
 	case 'c':
-		// Primary Device Attributes (DA) -> identify as VT220
-		select {
-		case t.ResponseChan <- []byte("\x1b[?62;c"):
-		default:
+		if t.csiLeader == '>' {
+			// Secondary Device Attributes (DA2) -> VT220 / xterm (return type 0, firmware 10, rom 1)
+			select {
+			case t.ResponseChan <- []byte("\x1b[>0;10;1c"):
+			default:
+			}
+		} else {
+			// Primary Device Attributes (DA) -> identify as VT220
+			select {
+			case t.ResponseChan <- []byte("\x1b[?62;c"):
+			default:
+			}
 		}
 
 	case 'h', 'l':
@@ -1051,6 +1098,8 @@ func (t *Terminal) executeCSI(cmd rune) {
 		if t.csiPrivate {
 			for _, mode := range args {
 				switch mode {
+				case 1:
+					t.appCursor = enable
 				case 25:
 					t.cursorVisible = enable
 				case 1047, 47:
@@ -1077,12 +1126,19 @@ func (t *Terminal) executeCSI(cmd rune) {
 						t.scrollOff = 0
 					} else {
 						t.isAlt = false
+						t.appCursor = false
+						t.mouseTracking = false
+						t.mouseSGR = false
 						t.restoreCursor()
 						t.scrollTop = 0
 						t.scrollBottom = t.rows - 1
 						t.scrollOff = 0
 					}
 					t.dirtyAll = true
+				case 1000, 1002:
+					t.mouseTracking = enable
+				case 1006:
+					t.mouseSGR = enable
 				case 2004:
 					t.bracketedPaste = enable
 				}

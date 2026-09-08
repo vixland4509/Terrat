@@ -242,6 +242,19 @@ func (c *Canvas) Rows() int {
 	return c.rows
 }
 
+func (c *Canvas) setPixel(x, y int, pixel uint32) {
+	if x < 0 || x >= c.Width || y < 0 || y >= c.Height {
+		return
+	}
+	p := y*c.Stride + x*4
+	if p >= 0 && p+3 < len(c.Pixels) {
+		c.Pixels[p+0] = byte(pixel)
+		c.Pixels[p+1] = byte(pixel >> 8)
+		c.Pixels[p+2] = byte(pixel >> 16)
+		c.Pixels[p+3] = 0xff
+	}
+}
+
 func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string, hudInfo string, tabs []TabInfo, searchMatches []SearchMatch, activeSearchIdx int, hoveredURL *URLRange, ghostText string, diag *DiagnosticInfo) {
 	term.RLock()
 	defer term.RUnlock()
@@ -256,8 +269,6 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 	headerLinePixel := th.HeaderLine.ToPixel()
 	borderPixel := th.Border.ToPixel()
 	closeDotPixel := th.CloseDot.ToPixel()
-	minDotPixel := th.MinDot.ToPixel()
-	maxDotPixel := th.MaxDot.ToPixel()
 	badgeTextPixel := th.BadgeText.ToPixel()
 	mutedTextPixel := th.MutedText.ToPixel()
 
@@ -267,28 +278,19 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 		FillPattern16x16(c.Pixels, c.Stride, 0, 0, c.Width, c.Height, &mcDeepslate16x16)
 		DrawHLine(c.Pixels, c.Stride, 0, HeaderHeight-1, c.Width, 0x000000)
 		DrawHLine(c.Pixels, c.Stride, 0, HeaderHeight, c.Width, 0x282f28)
-
-		DrawMinecraftBlock(c.Pixels, c.Stride, 14, 11, "redstone")
-		DrawMinecraftBlock(c.Pixels, c.Stride, 32, 11, "gold")
-		DrawMinecraftBlock(c.Pixels, c.Stride, 50, 11, "emerald")
 	} else {
 		FillRect(c.Pixels, c.Stride, 0, 0, c.Width, c.Height, defaultBGPixel)
 
 		FillRect(c.Pixels, c.Stride, 0, 0, c.Width, HeaderHeight, headerBGPixel)
 		DrawHLine(c.Pixels, c.Stride, 0, HeaderHeight-1, c.Width, headerLinePixel)
-
-		dotY := HeaderHeight / 2
-		DrawCircle(c.Pixels, c.Stride, 20, dotY, 5, closeDotPixel)
-		DrawCircle(c.Pixels, c.Stride, 36, dotY, 5, minDotPixel)
-		DrawCircle(c.Pixels, c.Stride, 52, dotY, 5, maxDotPixel)
 	}
 
 	titleY := (HeaderHeight - charH) / 2
 	c.TabHitBoxes = nil
 	c.NewTabHitBox = [4]int{0, 0, 0, 0}
 
-	curXTab := 70
-	availTabWidth := c.Width - 140 - curXTab - 40
+	curXTab := 12
+	availTabWidth := c.Width - 120 - curXTab - 40
 	if availTabWidth < 80 {
 		availTabWidth = 80
 	}
@@ -387,12 +389,49 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 	}
 	c.NewTabHitBox = [4]int{btnX - 2, btnX + btnW + 2, 0, HeaderHeight}
 
+	// Window controls on the top-right (Minimize, Maximize, Close)
+	winBtnW := 36
+	minBtnX := c.Width - winBtnW*3
+	maxBtnX := c.Width - winBtnW*2
+	closeBtnX := c.Width - winBtnW
+
+	if isMC {
+		DrawMinecraftBlock(c.Pixels, c.Stride, minBtnX+12, 11, "gold")
+		DrawMinecraftBlock(c.Pixels, c.Stride, maxBtnX+12, 11, "emerald")
+		DrawMinecraftBlock(c.Pixels, c.Stride, closeBtnX+12, 11, "redstone")
+	} else {
+		midY := HeaderHeight / 2
+		btnFG := mutedTextPixel
+
+		// 1. Minimize: clean horizontal line
+		DrawHLine(c.Pixels, c.Stride, minBtnX+13, midY, 10, btnFG)
+		DrawHLine(c.Pixels, c.Stride, minBtnX+13, midY+1, 10, btnFG)
+
+		// 2. Maximize / Fullscreen: clean square outline
+		sqSize := 10
+		sqX := maxBtnX + 13
+		sqY := (HeaderHeight - sqSize) / 2
+		DrawRectBorder(c.Pixels, c.Stride, sqX, sqY, sqSize, sqSize, btnFG)
+
+		// 3. Close: clean diagonal cross ✕
+		crossSize := 9
+		crossX := closeBtnX + 13
+		crossY := (HeaderHeight - crossSize) / 2
+		closeFG := closeDotPixel
+		for i := 0; i < crossSize; i++ {
+			c.setPixel(crossX+i, crossY+i, closeFG)
+			c.setPixel(crossX+i+1, crossY+i, closeFG)
+			c.setPixel(crossX+crossSize-1-i, crossY+i, closeFG)
+			c.setPixel(crossX+crossSize-i, crossY+i, closeFG)
+		}
+	}
+
 	if hudInfo == "" {
 		hudInfo = fmt.Sprintf("%dx%d", c.cols, c.rows)
 	}
 	hudLen := len(hudInfo)
-	hudX := c.Width - (hudLen * charW) - 18
-	if hudX > 70+(12*charW) {
+	hudX := minBtnX - (hudLen * charW) - 16
+	if hudX > btnX+btnW+16 {
 		if isMC {
 			c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, hudX, titleY, hudInfo, 0x55ffff, 0x153f3f, true)
 		} else {

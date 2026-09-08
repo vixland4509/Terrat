@@ -14,6 +14,7 @@ type KeyHandler struct {
 	maxKeycode        xproto.Keycode
 	keysymsPerKeycode byte
 	keysyms           []xproto.Keysym
+	numLockMask       uint16
 }
 
 func NewKeyHandler(X *xgb.Conn) (*KeyHandler, error) {
@@ -27,12 +28,40 @@ func NewKeyHandler(X *xgb.Conn) (*KeyHandler, error) {
 		return nil, err
 	}
 
-	return &KeyHandler{
+	kh := &KeyHandler{
 		minKeycode:        minKey,
 		maxKeycode:        maxKey,
 		keysymsPerKeycode: mapping.KeysymsPerKeycode,
 		keysyms:           mapping.Keysyms,
-	}, nil
+		numLockMask:       0x10, // Mod2 default
+	}
+	kh.detectNumLockMask(X)
+	return kh, nil
+}
+
+func (kh *KeyHandler) detectNumLockMask(X *xgb.Conn) {
+	modMap, err := xproto.GetModifierMapping(X).Reply()
+	if err != nil || modMap == nil {
+		kh.numLockMask = 0x10
+		return
+	}
+	kpm := int(modMap.KeycodesPerModifier)
+	for mod := 0; mod < 8; mod++ {
+		mask := uint16(1 << mod)
+		for k := 0; k < kpm; k++ {
+			kc := modMap.Keycodes[mod*kpm+k]
+			if kc == 0 || kc < kh.minKeycode || kc > kh.maxKeycode {
+				continue
+			}
+			idx := int(kc-kh.minKeycode) * int(kh.keysymsPerKeycode)
+			for c := 0; c < int(kh.keysymsPerKeycode); c++ {
+				if idx+c < len(kh.keysyms) && kh.keysyms[idx+c] == 0xff7f { // XK_Num_Lock
+					kh.numLockMask = mask
+					return
+				}
+			}
+		}
+	}
 }
 
 func (kh *KeyHandler) KeySym(ev xproto.KeyPressEvent) xproto.Keysym {
@@ -55,12 +84,29 @@ func (kh *KeyHandler) KeySym(ev xproto.KeyPressEvent) xproto.Keysym {
 	isShift := (ev.State & ModShift) != 0
 	isLock := (ev.State & ModLock) != 0 // CapsLock
 
-	keysym := kh.keysyms[idx+col]
+	isKP := false
+	for c := 0; c < int(kh.keysymsPerKeycode); c++ {
+		s := kh.keysyms[idx+c]
+		if (s >= 0xff80 && s <= 0xffbd) || (s >= 0xffb0 && s <= 0xffb9) {
+			isKP = true
+			break
+		}
+	}
 
+	keysym := kh.keysyms[idx+col]
 	shiftCol := col + 1
-	if shiftCol < int(kh.keysymsPerKeycode) && kh.keysyms[idx+shiftCol] != 0 {
-		if isShift {
+
+	if isKP {
+		isNumLock := (ev.State & kh.numLockMask) != 0
+		effectiveShift := isShift != isNumLock
+		if effectiveShift && shiftCol < int(kh.keysymsPerKeycode) && kh.keysyms[idx+shiftCol] != 0 {
 			keysym = kh.keysyms[idx+shiftCol]
+		}
+	} else {
+		if shiftCol < int(kh.keysymsPerKeycode) && kh.keysyms[idx+shiftCol] != 0 {
+			if isShift {
+				keysym = kh.keysyms[idx+shiftCol]
+			}
 		}
 	}
 
@@ -96,15 +142,17 @@ func (kh *KeyHandler) RefreshMapping(X *xgb.Conn) error {
 	kh.maxKeycode = maxKey
 	kh.keysymsPerKeycode = mapping.KeysymsPerKeycode
 	kh.keysyms = mapping.Keysyms
+	kh.detectNumLockMask(X)
 	return nil
 }
 
-func (kh *KeyHandler) Translate(ev xproto.KeyPressEvent) ([]byte, ActionType) {
+func (kh *KeyHandler) Translate(ev xproto.KeyPressEvent, appCursor ...bool) ([]byte, ActionType) {
 	keysym := kh.KeySym(ev)
 	if keysym == 0 {
 		return nil, ActionNone
 	}
 
+	isAppCursor := len(appCursor) > 0 && appCursor[0]
 	state := ev.State
 	isShift := (state & ModShift) != 0
 	isCtrl := (state & ModCtrl) != 0
@@ -231,6 +279,71 @@ func (kh *KeyHandler) Translate(ev xproto.KeyPressEvent) ([]byte, ActionType) {
 	}
 
 	switch keysym {
+	// Keypad numbers (0-9)
+	case 0xffb0, 0xffb1, 0xffb2, 0xffb3, 0xffb4, 0xffb5, 0xffb6, 0xffb7, 0xffb8, 0xffb9:
+		return []byte{byte('0' + (keysym - 0xffb0))}, ActionNone
+
+	// Keypad arithmetic and separators
+	case 0xffaa: // KP_Multiply
+		return []byte("*"), ActionNone
+	case 0xffab: // KP_Add
+		return []byte("+"), ActionNone
+	case 0xffac: // KP_Separator
+		return []byte(","), ActionNone
+	case 0xffad: // KP_Subtract
+		return []byte("-"), ActionNone
+	case 0xffae: // KP_Decimal
+		return []byte("."), ActionNone
+	case 0xffaf: // KP_Divide
+		return []byte("/"), ActionNone
+	case 0xffbd: // KP_Equal
+		return []byte("="), ActionNone
+	case 0xff80: // KP_Space
+		return []byte(" "), ActionNone
+	case 0xff89: // KP_Tab
+		return []byte("\t"), ActionNone
+
+	// Keypad navigation (when NumLock is OFF)
+	case 0xff95: // KP_Home
+		if isAppCursor {
+			return []byte("\x1bOH"), ActionNone
+		}
+		return []byte("\x1b[H"), ActionNone
+	case 0xff96: // KP_Left
+		if isAppCursor {
+			return []byte("\x1bOD"), ActionNone
+		}
+		return []byte("\x1b[D"), ActionNone
+	case 0xff97: // KP_Up
+		if isAppCursor {
+			return []byte("\x1bOA"), ActionNone
+		}
+		return []byte("\x1b[A"), ActionNone
+	case 0xff98: // KP_Right
+		if isAppCursor {
+			return []byte("\x1bOC"), ActionNone
+		}
+		return []byte("\x1b[C"), ActionNone
+	case 0xff99: // KP_Down
+		if isAppCursor {
+			return []byte("\x1bOB"), ActionNone
+		}
+		return []byte("\x1b[B"), ActionNone
+	case 0xff9a: // KP_Prior (Page Up)
+		return []byte("\x1b[5~"), ActionNone
+	case 0xff9b: // KP_Next (Page Down)
+		return []byte("\x1b[6~"), ActionNone
+	case 0xff9c: // KP_End
+		if isAppCursor {
+			return []byte("\x1bOF"), ActionNone
+		}
+		return []byte("\x1b[F"), ActionNone
+	case 0xff9d: // KP_Begin (Center 5)
+		return []byte("\x1b[E"), ActionNone
+	case 0xff9e: // KP_Insert
+		return []byte("\x1b[2~"), ActionNone
+	case 0xff9f: // KP_Delete
+		return []byte("\x1b[3~"), ActionNone
 	case 0xff0d, 0xff8d:
 		return []byte("\r"), ActionNone
 	case 0xff08:
@@ -247,20 +360,38 @@ func (kh *KeyHandler) Translate(ev xproto.KeyPressEvent) ([]byte, ActionType) {
 	case 0xff63:
 		return []byte("\x1b[2~"), ActionNone
 	case 0xff50:
+		if isAppCursor {
+			return []byte("\x1bOH"), ActionNone
+		}
 		return []byte("\x1b[H"), ActionNone
 	case 0xff57:
+		if isAppCursor {
+			return []byte("\x1bOF"), ActionNone
+		}
 		return []byte("\x1b[F"), ActionNone
 	case 0xff55:
 		return []byte("\x1b[5~"), ActionNone
 	case 0xff56:
 		return []byte("\x1b[6~"), ActionNone
 	case 0xff52:
+		if isAppCursor {
+			return []byte("\x1bOA"), ActionNone
+		}
 		return []byte("\x1b[A"), ActionNone
 	case 0xff54:
+		if isAppCursor {
+			return []byte("\x1bOB"), ActionNone
+		}
 		return []byte("\x1b[B"), ActionNone
 	case 0xff53:
+		if isAppCursor {
+			return []byte("\x1bOC"), ActionNone
+		}
 		return []byte("\x1b[C"), ActionNone
 	case 0xff51:
+		if isAppCursor {
+			return []byte("\x1bOD"), ActionNone
+		}
 		return []byte("\x1b[D"), ActionNone
 
 	case 0xffbe:
@@ -300,6 +431,34 @@ func (kh *KeyHandler) Translate(ev xproto.KeyPressEvent) ([]byte, ActionType) {
 
 // KeysymToRune converts an X11 keysym to its corresponding Unicode rune.
 func KeysymToRune(keysym xproto.Keysym) (rune, bool) {
+	// Keypad numbers (0-9)
+	if keysym >= 0xffb0 && keysym <= 0xffb9 {
+		return rune('0' + (keysym - 0xffb0)), true
+	}
+
+	// Keypad arithmetic and special
+	switch keysym {
+	case 0xffaa:
+		return '*', true
+	case 0xffab:
+		return '+', true
+	case 0xffac:
+		return ',', true
+	case 0xffad:
+		return '-', true
+	case 0xffae:
+		return '.', true
+	case 0xffaf:
+		return '/', true
+	case 0xffbd:
+		return '=', true
+	case 0xff80:
+		return ' ', true
+	case 0xff89:
+		return '\t', true
+	case 0xff8d:
+		return '\r', true
+	}
 	// Standard ASCII printable
 	if keysym >= 0x0020 && keysym <= 0x007e {
 		return rune(keysym), true

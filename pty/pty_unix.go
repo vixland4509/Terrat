@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 
 	"github.com/creack/pty"
@@ -31,13 +32,19 @@ func Start(cols, rows, pixelWidth, pixelHeight uint16, customCmd ...string) (*Te
 		cmd = exec.Command(shell)
 	}
 
-	env := os.Environ()
+	var cleanEnv []string
+	for _, v := range os.Environ() {
+		if strings.HasPrefix(v, "TERM=") || strings.HasPrefix(v, "COLORTERM=") || strings.HasPrefix(v, "TERRAT_TERMINAL=") {
+			continue
+		}
+		cleanEnv = append(cleanEnv, v)
+	}
 	customEnv := []string{
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
 		"TERRAT_TERMINAL=1",
 	}
-	cmd.Env = append(env, customEnv...)
+	cmd.Env = append(cleanEnv, customEnv...)
 
 	ws := &pty.Winsize{
 		Rows: rows,

@@ -8,6 +8,7 @@ import (
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/font/opentype"
+	"golang.org/x/image/font/sfnt"
 	"golang.org/x/image/math/fixed"
 )
 
@@ -17,6 +18,11 @@ type GlyphMask struct {
 	Alpha  []byte
 }
 
+type fallbackFont struct {
+	face font.Face
+	otf  *opentype.Font
+}
+
 type FontEngine struct {
 	charWidth  int
 	charHeight int
@@ -24,6 +30,8 @@ type FontEngine struct {
 	face       font.Face
 	otf        *opentype.Font
 	fontSize   float64
+
+	fallbacks []fallbackFont
 
 	asciiCache [96][2]*GlyphMask
 	otherCache map[rune]*GlyphMask
@@ -43,6 +51,29 @@ var candidateTTFFonts = []string{
 	"/usr/share/fonts/truetype/freefont/FreeMono.ttf",
 }
 
+var candidateFallbackFonts = []string{
+	// Arabic / Persian
+	"/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+	"/usr/share/fonts/truetype/noto/NotoSansArabicUI-Regular.ttf",
+	"/usr/share/fonts/truetype/noto/NotoSansArabicUI-Bold.ttf",
+	"/usr/share/fonts/truetype/ibm-plex/IBMPlexSansArabic-Regular.ttf",
+	"/usr/share/fonts/truetype/ibm-plex/IBMPlexSansArabic-Medium.ttf",
+	// Symbols & Math
+	"/usr/share/fonts/truetype/noto/NotoSansSymbols-Regular.ttf",
+	"/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+	"/usr/share/fonts/truetype/noto/NotoSansMath-Regular.ttf",
+	// General Unicode & CJK
+	"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+	"/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+	"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+	"/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+	// Windows fallbacks
+	`C:\Windows\Fonts\segoeui.ttf`,
+	`C:\Windows\Fonts\seguiemj.ttf`,
+	`C:\Windows\Fonts\seguisym.ttf`,
+	`C:\Windows\Fonts\arial.ttf`,
+}
+
 func init() {
 	if windir := os.Getenv("WINDIR"); windir != "" {
 		candidateTTFFonts = append([]string{
@@ -51,6 +82,12 @@ func init() {
 			filepath.Join(windir, "Fonts", "consola.ttf"),
 			filepath.Join(windir, "Fonts", "lucon.ttf"),
 		}, candidateTTFFonts...)
+		candidateFallbackFonts = append([]string{
+			filepath.Join(windir, "Fonts", "segoeui.ttf"),
+			filepath.Join(windir, "Fonts", "seguiemj.ttf"),
+			filepath.Join(windir, "Fonts", "seguisym.ttf"),
+			filepath.Join(windir, "Fonts", "arial.ttf"),
+		}, candidateFallbackFonts...)
 	}
 }
 
@@ -106,9 +143,42 @@ func NewFontEngine(fontSize float64) (*FontEngine, error) {
 		fe.charHeight = 10
 	}
 
+	fe.loadFallbacks(fontSize)
 	fe.precacheASCII()
 
 	return fe, nil
+}
+
+func (fe *FontEngine) loadFallbacks(fontSize float64) {
+	for _, fb := range fe.fallbacks {
+		if fb.face != nil && fb.face != basicfont.Face7x13 {
+			_ = fb.face.Close()
+		}
+	}
+	fe.fallbacks = nil
+
+	for _, path := range candidateFallbackFonts {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		otf, err := opentype.Parse(data)
+		if err != nil {
+			continue
+		}
+		face, err := opentype.NewFace(otf, &opentype.FaceOptions{
+			Size:    fontSize,
+			DPI:     72,
+			Hinting: font.HintingFull,
+		})
+		if err != nil {
+			continue
+		}
+		fe.fallbacks = append(fe.fallbacks, fallbackFont{
+			face: face,
+			otf:  otf,
+		})
+	}
 }
 
 func (fe *FontEngine) precacheASCII() {
@@ -184,6 +254,7 @@ func (fe *FontEngine) SetFontSize(size float64) error {
 		fe.charHeight = 10
 	}
 
+	fe.loadFallbacks(size)
 	fe.otherCache = make(map[rune]*GlyphMask)
 	fe.precacheASCII()
 	return nil
@@ -237,13 +308,49 @@ func (fe *FontEngine) GetGlyph(r rune, bold bool) *GlyphMask {
 }
 
 func (fe *FontEngine) rasterizeRune(r rune, bold bool) *GlyphMask {
+	// Programmatic Box Drawing & Block Elements
+	if box := renderBoxOrBlock(r, fe.charWidth, fe.charHeight, fe.baseline); box != nil {
+		return box
+	}
+
+	var buf sfnt.Buffer
+	useFace := fe.face
+	found := true
+
+	if fe.otf != nil {
+		idx, err := fe.otf.GlyphIndex(&buf, r)
+		if err != nil || idx == 0 {
+			// Not in primary font, search fallbacks
+			found = false
+			for _, fb := range fe.fallbacks {
+				if fb.otf != nil {
+					fidx, ferr := fb.otf.GlyphIndex(&buf, r)
+					if ferr == nil && fidx != 0 {
+						useFace = fb.face
+						found = true
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if !found {
+		// Missing from all fonts: return blank/transparent glyph instead of .notdef box
+		return &GlyphMask{
+			Width:  fe.charWidth,
+			Height: fe.charHeight,
+			Alpha:  make([]byte, fe.charWidth*fe.charHeight),
+		}
+	}
+
 	dst := image.NewAlpha(image.Rect(0, 0, fe.charWidth, fe.charHeight))
 
 	dot := fixed.P(0, fe.baseline)
 	d := &font.Drawer{
 		Dst:  dst,
 		Src:  image.Opaque,
-		Face: fe.face,
+		Face: useFace,
 		Dot:  dot,
 	}
 	d.DrawString(string(r))
@@ -270,9 +377,251 @@ func (fe *FontEngine) rasterizeRune(r rune, bold bool) *GlyphMask {
 }
 
 func (fe *FontEngine) Close() {
-	if fe.face != nil {
+	if fe.face != nil && fe.face != basicfont.Face7x13 {
 		_ = fe.face.Close()
 	}
+	for _, fb := range fe.fallbacks {
+		if fb.face != nil && fb.face != basicfont.Face7x13 {
+			_ = fb.face.Close()
+		}
+	}
+}
+
+func renderBoxOrBlock(r rune, w, h, baseline int) *GlyphMask {
+	if w <= 0 || h <= 0 {
+		return nil
+	}
+
+	mask := &GlyphMask{
+		Width:  w,
+		Height: h,
+		Alpha:  make([]byte, w*h),
+	}
+
+	setPixel := func(x, y int, alpha byte) {
+		if x >= 0 && x < w && y >= 0 && y < h {
+			mask.Alpha[y*w+x] = alpha
+		}
+	}
+	fillRect := func(x0, y0, x1, y1 int, alpha byte) {
+		for y := y0; y < y1; y++ {
+			for x := x0; x < x1; x++ {
+				setPixel(x, y, alpha)
+			}
+		}
+	}
+
+	// 1. Block Elements (U+2580 - U+259F)
+	if r >= 0x2580 && r <= 0x259f {
+		switch r {
+		case 0x2588: // Full block █
+			fillRect(0, 0, w, h, 0xff)
+			return mask
+		case 0x2580: // Upper half block ▀
+			fillRect(0, 0, w, h/2, 0xff)
+			return mask
+		case 0x2584: // Lower half block ▄
+			fillRect(0, h/2, w, h, 0xff)
+			return mask
+		case 0x258c: // Left half block ▌
+			fillRect(0, 0, w/2, h, 0xff)
+			return mask
+		case 0x2590: // Right half block ▐
+			fillRect(w/2, 0, w, h, 0xff)
+			return mask
+		case 0x2594: // Upper 1/8 block
+			fillRect(0, 0, w, (h+7)/8, 0xff)
+			return mask
+		case 0x2595: // Right 1/8 block
+			fillRect(w-(w+7)/8, 0, w, h, 0xff)
+			return mask
+		case 0x2591: // Light shade ░
+			for y := 0; y < h; y++ {
+				for x := 0; x < w; x++ {
+					if (x+y)%4 == 0 {
+						setPixel(x, y, 0xff)
+					}
+				}
+			}
+			return mask
+		case 0x2592: // Medium shade ▒
+			for y := 0; y < h; y++ {
+				for x := 0; x < w; x++ {
+					if (x+y)%2 == 0 {
+						setPixel(x, y, 0xff)
+					}
+				}
+			}
+			return mask
+		case 0x2593: // Dark shade ▓
+			for y := 0; y < h; y++ {
+				for x := 0; x < w; x++ {
+					if (x+y)%4 != 0 {
+						setPixel(x, y, 0xff)
+					}
+				}
+			}
+			return mask
+		}
+		// Lower 1/8 to 7/8 (0x2581 - 0x2587)
+		if r >= 0x2581 && r <= 0x2587 {
+			eighths := int(r - 0x2580)
+			blockH := (h * eighths) / 8
+			if blockH < 1 {
+				blockH = 1
+			}
+			fillRect(0, h-blockH, w, h, 0xff)
+			return mask
+		}
+		// Left 7/8 to 1/8 (0x2589 - 0x258f)
+		if r >= 0x2589 && r <= 0x258f {
+			eighths := 8 - int(r-0x2588)
+			blockW := (w * eighths) / 8
+			if blockW < 1 {
+				blockW = 1
+			}
+			fillRect(0, 0, blockW, h, 0xff)
+			return mask
+		}
+	}
+
+	// 2. Box Drawing (U+2500 - U+257F)
+	if r >= 0x2500 && r <= 0x257f {
+		var up, down, left, right int
+		switch r {
+		case 0x2500: left, right = 1, 1 // ─
+		case 0x2501: left, right = 2, 2 // ━
+		case 0x2502: up, down = 1, 1    // │
+		case 0x2503: up, down = 2, 2    // ┃
+		case 0x2508: left, right = 1, 1 // ┄
+		case 0x2509: left, right = 2, 2 // ┅
+		case 0x250A: up, down = 1, 1    // ┆
+		case 0x250B: up, down = 2, 2    // ┇
+		case 0x250C: down, right = 1, 1 // ┌
+		case 0x250D: down, right = 1, 2 // ┍
+		case 0x250E: down, right = 2, 1 // ┎
+		case 0x250F: down, right = 2, 2 // ┏
+		case 0x2510: down, left = 1, 1  // ┐
+		case 0x2511: down, left = 1, 2  // ┑
+		case 0x2512: down, left = 2, 1  // ┒
+		case 0x2513: down, left = 2, 2  // ┓
+		case 0x2514: up, right = 1, 1   // └
+		case 0x2515: up, right = 1, 2   // ┕
+		case 0x2516: up, right = 2, 1   // ┖
+		case 0x2517: up, right = 2, 2   // ┗
+		case 0x2518: up, left = 1, 1    // ┘
+		case 0x2519: up, left = 1, 2    // ┙
+		case 0x251A: up, left = 2, 1    // ┚
+		case 0x251B: up, left = 2, 2    // ┛
+		case 0x251C: up, down, right = 1, 1, 1 // ├
+		case 0x251D: up, down, right = 1, 1, 2 // ┝
+		case 0x251E: up, down, right = 2, 1, 1 // ┞
+		case 0x251F: up, down, right = 1, 2, 1 // ┟
+		case 0x2520: up, down, right = 2, 2, 1 // ┠
+		case 0x2523: up, down, right = 2, 2, 2 // ┣
+		case 0x2524: up, down, left = 1, 1, 1  // ┤
+		case 0x2525: up, down, left = 1, 1, 2  // ┥
+		case 0x2528: up, down, left = 2, 2, 1  // ┨
+		case 0x252B: up, down, left = 2, 2, 2  // ┫
+		case 0x252C: down, left, right = 1, 1, 1 // ┬
+		case 0x252F: down, left, right = 1, 2, 2 // ┯
+		case 0x2530: down, left, right = 2, 1, 1 // ┰
+		case 0x2533: down, left, right = 2, 2, 2 // ┳
+		case 0x2534: up, left, right = 1, 1, 1   // ┴
+		case 0x2537: up, left, right = 1, 2, 2   // ┷
+		case 0x2538: up, left, right = 2, 1, 1   // ┸
+		case 0x253B: up, left, right = 2, 2, 2   // ┻
+		case 0x253C: up, down, left, right = 1, 1, 1, 1 // ┼
+		case 0x253F: up, down, left, right = 1, 1, 2, 2 // ┿
+		case 0x2542: up, down, left, right = 2, 2, 1, 1 // ╂
+		case 0x254B: up, down, left, right = 2, 2, 2, 2 // ╋
+		case 0x254C: left, right = 1, 1 // ╌
+		case 0x254D: left, right = 2, 2 // ╍
+		case 0x254E: up, down = 1, 1    // ╎
+		case 0x254F: up, down = 2, 2    // ╏
+		case 0x2550: left, right = 3, 3 // ═
+		case 0x2551: up, down = 3, 3    // ║
+		case 0x2552: down, right = 1, 3 // ╒
+		case 0x2553: down, right = 3, 1 // ╓
+		case 0x2554: down, right = 3, 3 // ╔
+		case 0x2555: down, left = 1, 3  // ╕
+		case 0x2556: down, left = 3, 1  // ╖
+		case 0x2557: down, left = 3, 3  // ╗
+		case 0x2558: up, right = 1, 3   // ╘
+		case 0x2559: up, right = 3, 1   // ╙
+		case 0x255A: up, right = 3, 3   // ╚
+		case 0x255B: up, left = 1, 3    // ╛
+		case 0x255C: up, left = 3, 1    // ╜
+		case 0x255D: up, left = 3, 3    // ╝
+		case 0x255E: up, down, right = 1, 1, 3 // ╞
+		case 0x255F: up, down, right = 3, 3, 1 // ╟
+		case 0x2560: up, down, right = 3, 3, 3 // ╠
+		case 0x2561: up, down, left = 1, 1, 3  // ╡
+		case 0x2562: up, down, left = 3, 3, 1  // ╢
+		case 0x2563: up, down, left = 3, 3, 3  // ╣
+		case 0x2564: down, left, right = 1, 3, 3 // ╤
+		case 0x2565: down, left, right = 3, 1, 1 // ╥
+		case 0x2566: down, left, right = 3, 3, 3 // ╦
+		case 0x2567: up, left, right = 1, 3, 3   // ╧
+		case 0x2568: up, left, right = 3, 1, 1   // ╨
+		case 0x2569: up, left, right = 3, 3, 3   // ╩
+		case 0x256A: up, down, left, right = 1, 1, 3, 3 // ╪
+		case 0x256B: up, down, left, right = 3, 3, 1, 1 // ╫
+		case 0x256C: up, down, left, right = 3, 3, 3, 3 // ╬
+		case 0x256D: down, right = 1, 1 // ╭
+		case 0x256E: down, left = 1, 1  // ╮
+		case 0x256F: up, left = 1, 1    // ╯
+		case 0x2570: up, right = 1, 1   // ╰
+		case 0x2574: left = 1          // ╴
+		case 0x2575: up = 1            // ╵
+		case 0x2576: right = 1         // ╶
+		case 0x2577: down = 1          // ╷
+		case 0x2578: left = 2          // ╸
+		case 0x2579: up = 2            // ╹
+		case 0x257A: right = 2         // ╺
+		case 0x257B: down = 2          // ╻
+		default:
+			return nil
+		}
+
+		midX := w / 2
+		midY := h / 2
+
+		drawLine := func(mode int, x0, y0, x1, y1 int, isHoriz bool) {
+			if mode == 0 {
+				return
+			}
+			if mode == 1 { // Light line (1px)
+				if isHoriz {
+					fillRect(x0, midY, x1, midY+1, 0xff)
+				} else {
+					fillRect(midX, y0, midX+1, y1, 0xff)
+				}
+			} else if mode == 2 { // Heavy line (2px)
+				if isHoriz {
+					fillRect(x0, midY-1, x1, midY+1, 0xff)
+				} else {
+					fillRect(midX-1, y0, midX+1, y1, 0xff)
+				}
+			} else if mode == 3 { // Double line
+				if isHoriz {
+					fillRect(x0, midY-2, x1, midY-1, 0xff)
+					fillRect(x0, midY+1, x1, midY+2, 0xff)
+				} else {
+					fillRect(midX-2, y0, midX-1, y1, 0xff)
+					fillRect(midX+1, y0, midX+2, y1, 0xff)
+				}
+			}
+		}
+
+		drawLine(up, midX, 0, midX+1, midY+1, false)
+		drawLine(down, midX, midY, midX+1, h, false)
+		drawLine(left, 0, midY, midX+1, midY+1, true)
+		drawLine(right, midX, midY, w, midY+1, true)
+		return mask
+	}
+
+	return nil
 }
 
 func DrawGlyphBlit(buf []byte, stride int, cellX, cellY int, mask *GlyphMask, fgPixel, bgPixel uint32, underline bool, baseline int) {

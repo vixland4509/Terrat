@@ -578,6 +578,52 @@ func main() {
 		return cx, cy
 	}
 
+	sendMouseEvent := func(btn int, press bool, pixelX, pixelY int, state uint16) bool {
+		if activeTabIdx < 0 || activeTabIdx >= len(tabs) {
+			return false
+		}
+		curTerm := tabs[activeTabIdx].Term
+		curPTY := tabs[activeTabIdx].PTY
+		if !curTerm.MouseTrackingLocked() {
+			return false
+		}
+		cx, cy := toCellCoords(pixelX, pixelY)
+		col := cx + 1
+		row := cy + 1
+
+		cb := btn
+		if (state & platform.ModShift) != 0 {
+			cb |= 4
+		}
+		if (state & platform.ModAlt) != 0 {
+			cb |= 8
+		}
+		if (state & platform.ModCtrl) != 0 {
+			cb |= 16
+		}
+
+		if curTerm.MouseSGRLocked() {
+			terminator := 'M'
+			if !press {
+				terminator = 'm'
+			}
+			seq := fmt.Sprintf("\x1b[<%d;%d;%d%c", cb, col, row, terminator)
+			_, _ = curPTY.Write([]byte(seq))
+			return true
+		} else if press {
+			if col > 223 {
+				col = 223
+			}
+			if row > 223 {
+				row = 223
+			}
+			b := []byte{0x1b, '[', 'M', byte(cb + 32), byte(col + 32), byte(row + 32)}
+			_, _ = curPTY.Write(b)
+			return true
+		}
+		return false
+	}
+
 	var (
 		lastClickTime time.Time
 		lastClickX    int
@@ -936,16 +982,19 @@ func main() {
 				}
 
 				if int(e.EventY) < render.HeaderHeight {
-					if e.EventX >= 12 && e.EventX <= 26 {
-						closeTab(activeTabIdx)
-						continue
-					} else if e.EventX >= 28 && e.EventX <= 42 {
-						win.Minimize()
-						continue
-					} else if e.EventX >= 44 && e.EventX <= 58 {
+					// Top-right window controls: Close, Maximize, Minimize
+					if int(e.EventX) >= int(currentWidth)-36 {
+						for _, t := range tabs {
+							t.Close()
+						}
+						os.Exit(0)
+					} else if int(e.EventX) >= int(currentWidth)-72 && int(e.EventX) < int(currentWidth)-36 {
 						win.ToggleMaximize()
 						continue
-					} else if int(e.EventX) >= int(currentWidth)-90 {
+					} else if int(e.EventX) >= int(currentWidth)-108 && int(e.EventX) < int(currentWidth)-72 {
+						win.Minimize()
+						continue
+					} else if int(e.EventX) >= int(currentWidth)-180 && int(e.EventX) < int(currentWidth)-108 {
 						isPrefOpen = !isPrefOpen
 						if isPrefOpen {
 							for i, opt := range prefOptions {
@@ -1033,6 +1082,12 @@ func main() {
 					}
 				}
 
+				if activeTerm.MouseTrackingLocked() && (e.State&platform.ModShift) == 0 {
+					if sendMouseEvent(0, true, int(e.EventX), int(e.EventY), e.State) {
+						continue
+					}
+				}
+
 				cx, cy := toCellCoords(int(e.EventX), int(e.EventY))
 				now := time.Now()
 				if now.Sub(lastClickTime) < 350*time.Millisecond && cx == lastClickX && cy == lastClickY {
@@ -1064,7 +1119,18 @@ func main() {
 					triggerRedraw()
 				}
 			} else if e.Detail == 2 {
+				if activeTerm.MouseTrackingLocked() && (e.State&platform.ModShift) == 0 {
+					if sendMouseEvent(1, true, int(e.EventX), int(e.EventY), e.State) {
+						continue
+					}
+				}
 				win.PastePrimary()
+			} else if e.Detail == 3 {
+				if activeTerm.MouseTrackingLocked() && (e.State&platform.ModShift) == 0 {
+					if sendMouseEvent(2, true, int(e.EventX), int(e.EventY), e.State) {
+						continue
+					}
+				}
 			} else if e.Detail == 4 {
 				if isPrefOpen {
 					if prefIndex > 0 {
@@ -1083,6 +1149,11 @@ func main() {
 				if (e.State & platform.ModCtrl) != 0 {
 					applyZoom(platform.ActionZoomIn)
 					continue
+				}
+				if activeTerm.MouseTrackingLocked() && (e.State&platform.ModShift) == 0 {
+					if sendMouseEvent(64, true, int(e.EventX), int(e.EventY), e.State) {
+						continue
+					}
 				}
 				if activeTerm.IsAlt() {
 					_, _ = activePTY.Write([]byte("\x1b[A\x1b[A\x1b[A"))
@@ -1109,6 +1180,11 @@ func main() {
 					applyZoom(platform.ActionZoomOut)
 					continue
 				}
+				if activeTerm.MouseTrackingLocked() && (e.State&platform.ModShift) == 0 {
+					if sendMouseEvent(65, true, int(e.EventX), int(e.EventY), e.State) {
+						continue
+					}
+				}
 				if activeTerm.IsAlt() {
 					_, _ = activePTY.Write([]byte("\x1b[B\x1b[B\x1b[B"))
 				} else {
@@ -1118,6 +1194,19 @@ func main() {
 			}
 
 		case platform.ButtonReleaseEvent:
+			if activeTerm.MouseTrackingLocked() && (e.State&platform.ModShift) == 0 {
+				btn := -1
+				if e.Detail == 1 {
+					btn = 0
+				} else if e.Detail == 2 {
+					btn = 1
+				} else if e.Detail == 3 {
+					btn = 2
+				}
+				if btn >= 0 && sendMouseEvent(btn, false, int(e.EventX), int(e.EventY), e.State) {
+					continue
+				}
+			}
 			if e.Detail == 1 {
 				if isDraggingScrollbar {
 					isDraggingScrollbar = false
@@ -1141,6 +1230,23 @@ func main() {
 			keysym := e.KeySym
 			data := string(e.Bytes)
 			action := e.Action
+
+			if activeTerm.AppCursorLocked() && (e.State&(platform.ModCtrl|platform.ModAlt|platform.ModShift)) == 0 {
+				switch keysym {
+				case 0xff52: // Up
+					data = "\x1bOA"
+				case 0xff54: // Down
+					data = "\x1bOB"
+				case 0xff53: // Right
+					data = "\x1bOC"
+				case 0xff51: // Left
+					data = "\x1bOD"
+				case 0xff50: // Home
+					data = "\x1bOH"
+				case 0xff57: // End
+					data = "\x1bOF"
+				}
+			}
 
 			if action == platform.ActionPreferences {
 					isPrefOpen = !isPrefOpen
