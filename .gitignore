@@ -1,5 +1,6 @@
 # Binaries & Compiled Output
 terrat
+terrat-*
 *.exe
 *.exe~
 *.dll
@@ -7,8 +8,10 @@ terrat
 *.dylib
 bin/
 dist/
+dist
 release/
 *.tar.gz
+*.zip
 
 # Go Artifacts & Testing
 *.test
