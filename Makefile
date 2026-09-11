@@ -1,5 +1,5 @@
 BINARY=terrat
-VERSION?=0.2.2
+VERSION?=0.2.3
 PREFIX?=$(HOME)/go/bin
 DESKTOP_DIR=$(HOME)/.local/share/applications
 

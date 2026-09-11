@@ -166,12 +166,21 @@ func (e *Engine) Add(cmd string) {
 }
 
 // Suggest returns the ghost suffix (continuation) for the given input prefix.
-// If input is "git com", and best match is "git commit -m", suffix is "mit -m".
-func (e *Engine) Suggest(input string) string {
+// If cwd is provided, it prioritizes local file/directory path completion (including paths with spaces).
+// Otherwise or as fallback, it searches command history.
+func (e *Engine) Suggest(input string, cwd ...string) string {
 	if len(input) < 1 {
 		return ""
 	}
 
+	// 1. Try local filesystem path completion if cwd is provided
+	if len(cwd) > 0 && cwd[0] != "" {
+		if pathSuffix := suggestPath(input, cwd[0]); pathSuffix != "" {
+			return pathSuffix
+		}
+	}
+
+	// 2. Fall back to command history
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
@@ -187,3 +196,167 @@ func (e *Engine) Suggest(input string) string {
 
 	return ""
 }
+
+// suggestPath checks the active directory for matching files or folders (supporting spaces and quotes)
+func suggestPath(input string, cwd string) string {
+	if cwd == "" || len(input) == 0 {
+		return ""
+	}
+
+	// Check if input looks like a command with arguments or a path
+	inDouble := false
+	inSingle := false
+	escaped := false
+	lastTokenStart := 0
+
+	for i := 0; i < len(input); i++ {
+		b := input[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if b == '\\' && !inSingle {
+			escaped = true
+			continue
+		}
+		if b == '"' && !inSingle {
+			inDouble = !inDouble
+			if inDouble {
+				lastTokenStart = i
+			}
+			continue
+		}
+		if b == '\'' && !inDouble {
+			inSingle = !inSingle
+			if inSingle {
+				lastTokenStart = i
+			}
+			continue
+		}
+		if (b == ' ' || b == '\t') && !inDouble && !inSingle {
+			lastTokenStart = i + 1
+		}
+	}
+
+	rawToken := input[lastTokenStart:]
+
+	// Determine quote mode
+	isQuoted := false
+	quoteChar := byte(0)
+	cleanToken := rawToken
+
+	if len(rawToken) > 0 {
+		if rawToken[0] == '"' {
+			isQuoted = true
+			quoteChar = '"'
+			cleanToken = rawToken[1:]
+		} else if rawToken[0] == '\'' {
+			isQuoted = true
+			quoteChar = '\''
+			cleanToken = rawToken[1:]
+		}
+	}
+
+	// Unescape if unquoted (e.g. "my\ " -> "my ")
+	var unescapedToken strings.Builder
+	for i := 0; i < len(cleanToken); i++ {
+		if cleanToken[i] == '\\' && !isQuoted && i+1 < len(cleanToken) {
+			i++
+			unescapedToken.WriteByte(cleanToken[i])
+		} else {
+			unescapedToken.WriteByte(cleanToken[i])
+		}
+	}
+	pathToSearch := unescapedToken.String()
+
+	// Split directory and base
+	dirPart := filepath.Dir(pathToSearch)
+	basePart := filepath.Base(pathToSearch)
+
+	searchDir := cwd
+	if filepath.IsAbs(pathToSearch) {
+		if dirPart == "/" {
+			searchDir = "/"
+		} else {
+			searchDir = dirPart
+		}
+	} else if strings.HasPrefix(pathToSearch, "~") {
+		home, _ := os.UserHomeDir()
+		if len(pathToSearch) == 1 {
+			searchDir = home
+			basePart = ""
+		} else {
+			rem := pathToSearch[2:]
+			d := filepath.Dir(rem)
+			b := filepath.Base(rem)
+			searchDir = filepath.Join(home, d)
+			basePart = b
+		}
+	} else if strings.Contains(pathToSearch, "/") {
+		searchDir = filepath.Join(cwd, dirPart)
+	} else {
+		searchDir = cwd
+		basePart = pathToSearch
+	}
+
+	entries, err := os.ReadDir(searchDir)
+	if err != nil {
+		return ""
+	}
+
+	lowerBase := strings.ToLower(basePart)
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, ".") && !strings.HasPrefix(basePart, ".") {
+			continue // Skip hidden files unless explicitly requested
+		}
+
+		if len(basePart) > 0 && strings.HasPrefix(strings.ToLower(name), lowerBase) && len(name) >= len(basePart) {
+			suffix := name[len(basePart):]
+			if entry.IsDir() {
+				suffix += "/"
+			}
+
+			if isQuoted {
+				if entry.IsDir() {
+					return suffix
+				}
+				return suffix + string(quoteChar)
+			}
+
+			// In unquoted mode, spaces in suffix must be escaped
+			escapedSuffix := strings.ReplaceAll(suffix, " ", "\\ ")
+			return escapedSuffix
+		}
+	}
+
+	// Also check if the user typed an unescaped space at the end, e.g. "cd my "
+	// where the folder name contains a space ("my space folder")
+	if !isQuoted && len(rawToken) == 0 && lastTokenStart > 1 && input[lastTokenStart-1] == ' ' {
+		prevTokenStart := strings.LastIndexAny(strings.TrimRight(input[:lastTokenStart-1], " \t"), " \t")
+		var prevToken string
+		if prevTokenStart == -1 {
+			prevToken = strings.TrimSpace(input[:lastTokenStart-1])
+		} else {
+			prevToken = strings.TrimSpace(input[prevTokenStart+1 : lastTokenStart-1])
+		}
+		if len(prevToken) > 0 {
+			targetPrefix := strings.ToLower(prevToken + " ")
+			for _, entry := range entries {
+				name := entry.Name()
+				if strings.HasPrefix(strings.ToLower(name), targetPrefix) {
+					suffix := name[len(targetPrefix):]
+					if entry.IsDir() {
+						suffix += "/"
+					}
+					escapedSuffix := strings.ReplaceAll(suffix, " ", "\\ ")
+					return escapedSuffix
+				}
+			}
+		}
+	}
+
+	return ""
+}
+

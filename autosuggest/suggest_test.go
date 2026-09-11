@@ -1,6 +1,8 @@
 package autosuggest
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -59,3 +61,43 @@ func TestAutosuggestEmpty(t *testing.T) {
 		t.Fatalf("unknown input should return empty suggestion")
 	}
 }
+
+func TestAutosuggestPathWithSpaces(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	_ = os.Mkdir(filepath.Join(tmpDir, "My Projects Folder"), 0755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "script with space.sh"), []byte("echo"), 0755)
+
+	eng := NewEngine()
+
+	// 1. Unquoted prefix
+	suffix := eng.Suggest("cd My", tmpDir)
+	if suffix != "\\ Projects\\ Folder/" {
+		t.Fatalf("expected '\\ Projects\\ Folder/', got %q", suffix)
+	}
+
+	// 2. Escaped space prefix
+	suffix = eng.Suggest("cd My\\ ", tmpDir)
+	if suffix != "Projects\\ Folder/" {
+		t.Fatalf("expected 'Projects\\ Folder/', got %q", suffix)
+	}
+
+	// 3. Double-quoted prefix
+	suffix = eng.Suggest("cd \"My", tmpDir)
+	if suffix != " Projects Folder/" {
+		t.Fatalf("expected ' Projects Folder/', got %q", suffix)
+	}
+
+	// 4. Single unescaped space typed after first word
+	suffix = eng.Suggest("cd My ", tmpDir)
+	if suffix != "Projects\\ Folder/" {
+		t.Fatalf("expected 'Projects\\ Folder/', got %q", suffix)
+	}
+
+	// 5. File match
+	suffix = eng.Suggest("cat scr", tmpDir)
+	if suffix != "ipt\\ with\\ space.sh" {
+		t.Fatalf("expected 'ipt\\ with\\ space.sh', got %q", suffix)
+	}
+}
+

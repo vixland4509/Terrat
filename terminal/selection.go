@@ -12,6 +12,7 @@ const (
 	SelectionModeNormal
 	SelectionModeWord
 	SelectionModeLine
+	SelectionModeAll
 )
 
 type Selection struct {
@@ -36,7 +37,7 @@ func (s *Selection) HasSelection() bool {
 	if !s.Active {
 		return false
 	}
-	if s.Mode == SelectionModeWord || s.Mode == SelectionModeLine {
+	if s.Mode == SelectionModeWord || s.Mode == SelectionModeLine || s.Mode == SelectionModeAll {
 		return true
 	}
 	return s.StartX != s.EndX || s.StartY != s.EndY
@@ -45,6 +46,9 @@ func (s *Selection) HasSelection() bool {
 func (s *Selection) IsSelected(x, y int) bool {
 	if !s.HasSelection() {
 		return false
+	}
+	if s.Mode == SelectionModeAll {
+		return true
 	}
 	sX, sY, eX, eY := s.Normalized()
 	if y < sY || y > eY {
@@ -241,7 +245,7 @@ func (t *Terminal) SelectAll() {
 
 	t.sel = Selection{
 		Active:     true,
-		Mode:       SelectionModeNormal,
+		Mode:       SelectionModeAll,
 		StartX:     0,
 		StartY:     0,
 		EndX:       t.cols - 1,
@@ -278,12 +282,85 @@ func (t *Terminal) IsSelectedLocked(x, y int) bool {
 	return t.sel.IsSelected(x, y)
 }
 
+func (t *Terminal) getAllTextLocked() string {
+	var sb strings.Builder
+
+	// 1. All scrollback lines (if not in alt screen)
+	if !t.isAlt {
+		for _, row := range t.scrollback {
+			var lineRunes []rune
+			for _, cell := range row {
+				r := cell.Char
+				if r == 0 {
+					r = ' '
+				}
+				lineRunes = append(lineRunes, r)
+			}
+			lineStr := strings.TrimRight(string(lineRunes), " ")
+			sb.WriteString(lineStr)
+			sb.WriteByte('\n')
+		}
+	}
+
+	// 2. Active grid lines up to the last row containing visible text
+	grid := t.activeGrid()
+	lastRowWithContent := -1
+	for r := len(grid) - 1; r >= 0; r-- {
+		row := grid[r]
+		hasContent := false
+		for _, cell := range row {
+			if cell.Char != 0 && cell.Char != ' ' {
+				hasContent = true
+				break
+			}
+		}
+		if hasContent {
+			lastRowWithContent = r
+			break
+		}
+	}
+
+	if lastRowWithContent == -1 {
+		return strings.TrimRight(sb.String(), "\n")
+	}
+
+	for r := 0; r <= lastRowWithContent; r++ {
+		row := grid[r]
+		var lineRunes []rune
+		for _, cell := range row {
+			r := cell.Char
+			if r == 0 {
+				r = ' '
+			}
+			lineRunes = append(lineRunes, r)
+		}
+		lineStr := strings.TrimRight(string(lineRunes), " ")
+		sb.WriteString(lineStr)
+		if r < lastRowWithContent {
+			sb.WriteByte('\n')
+		}
+	}
+
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+// GetAllText returns all text from scrollback history and active grid, trimmed of trailing spaces and trailing empty lines.
+func (t *Terminal) GetAllText() string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.getAllTextLocked()
+}
+
 func (t *Terminal) GetSelectedText() string {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
 	if !t.sel.HasSelection() {
 		return ""
+	}
+
+	if t.sel.Mode == SelectionModeAll {
+		return t.getAllTextLocked()
 	}
 
 	sX, sY, eX, eY := t.sel.Normalized()
@@ -319,10 +396,7 @@ func (t *Terminal) GetSelectedText() string {
 			lineRunes = append(lineRunes, r)
 		}
 
-		lineStr := string(lineRunes)
-		if colEnd == t.cols-1 {
-			lineStr = strings.TrimRight(lineStr, " ")
-		}
+		lineStr := strings.TrimRight(string(lineRunes), " ")
 
 		sb.WriteString(lineStr)
 		if y < eY {
@@ -330,5 +404,5 @@ func (t *Terminal) GetSelectedText() string {
 		}
 	}
 
-	return sb.String()
+	return strings.TrimRight(sb.String(), "\n")
 }

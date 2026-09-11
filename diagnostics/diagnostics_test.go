@@ -138,6 +138,17 @@ func TestAnalyzeTypos(t *testing.T) {
 		t.Fatalf("expected nil for git alias 'st', got %+v", d)
 	}
 
+	// Commands with escaped spaces and quotes in paths should not false-alarm
+	if d := Analyze("cd \"my space folder\""); d != nil {
+		t.Fatalf("expected nil for 'cd \"my space folder\"', got %+v", d)
+	}
+	if d := Analyze("cd my\\ space\\ folder"); d != nil {
+		t.Fatalf("expected nil for 'cd my\\ space\\ folder', got %+v", d)
+	}
+	if d := Analyze("./my\\ script.sh"); d != nil {
+		t.Fatalf("expected nil for './my\\ script.sh', got %+v", d)
+	}
+
 	// Valid command should return nil
 	d = Analyze("git status")
 	if d != nil {

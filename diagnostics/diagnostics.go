@@ -308,6 +308,48 @@ func extractActiveSegment(input string) string {
 	return seg
 }
 
+// tokenizeCommand splits a command string into tokens respecting quotes and backslash escapes
+func tokenizeCommand(seg string) []string {
+	var tokens []string
+	var cur strings.Builder
+	inSingle := false
+	inDouble := false
+	escaped := false
+
+	for i := 0; i < len(seg); i++ {
+		b := seg[i]
+		if escaped {
+			cur.WriteByte(b)
+			escaped = false
+			continue
+		}
+		if b == '\\' && !inSingle {
+			escaped = true
+			continue
+		}
+		if b == '\'' && !inDouble {
+			inSingle = !inSingle
+			continue
+		}
+		if b == '"' && !inSingle {
+			inDouble = !inDouble
+			continue
+		}
+		if (b == ' ' || b == '\t') && !inSingle && !inDouble {
+			if cur.Len() > 0 {
+				tokens = append(tokens, cur.String())
+				cur.Reset()
+			}
+			continue
+		}
+		cur.WriteByte(b)
+	}
+	if cur.Len() > 0 {
+		tokens = append(tokens, cur.String())
+	}
+	return tokens
+}
+
 // unnestSudo removes sudo and common sudo flags, returning the underlying command
 func unnestSudo(parts []string) (cleanedParts []string, hasSudo bool) {
 	if len(parts) == 0 || parts[0] != "sudo" {
@@ -373,7 +415,7 @@ func Analyze(rawInput string) *Diagnostic {
 		return nil
 	}
 
-	parts := strings.Fields(activeSeg)
+	parts := tokenizeCommand(activeSeg)
 	if len(parts) == 0 {
 		return nil
 	}

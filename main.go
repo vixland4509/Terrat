@@ -125,23 +125,9 @@ func main() {
 	systemIsDark := platform.DetectSystemColorScheme()
 	activeTheme := terminal.ResolveTheme(appConfig.Theme, systemIsDark)
 
-	prefOptions := []render.PrefOption{
-		{ID: "auto", Label: "System Auto Detect", Sublabel: "Follow OS Dark/Light"},
-		{ID: "tokyo-night", Label: "Tokyo Night", Sublabel: "Dark / Midnight Blue"},
-		{ID: "catppuccin-mocha", Label: "Catppuccin Mocha", Sublabel: "Dark / Velvet Charcoal"},
-		{ID: "minecraft", Label: "Minecraft", Sublabel: ""},
-		{ID: "tokyo-day", Label: "Tokyo Day", Sublabel: "Light / Crisp Sunlight"},
-		{ID: "solarized-light", Label: "Solarized Light", Sublabel: "Light / Warm Parchment"},
-	}
 	isPrefOpen := false
 	prefIndex := 0
 	savedThemeID := appConfig.Theme
-	for i, opt := range prefOptions {
-		if opt.ID == savedThemeID {
-			prefIndex = i
-			break
-		}
-	}
 
 	redrawCh := make(chan struct{}, 1)
 	triggerRedraw := func() {
@@ -351,15 +337,38 @@ func main() {
 
 	var hoveredURL *render.URLRange
 
+	isPasswordPrompt := func(term *terminal.Terminal) bool {
+		if term == nil {
+			return false
+		}
+		_, cy, _ := term.Cursor()
+		rowStr := strings.ToLower(term.GetRowString(cy))
+		lower := strings.TrimSpace(rowStr)
+		if strings.Contains(lower, "[sudo]") {
+			return true
+		}
+		if strings.HasSuffix(lower, ":") || strings.HasSuffix(lower, ": ") {
+			if strings.Contains(lower, "password") || strings.Contains(lower, "passphrase") || strings.Contains(lower, "pin") {
+				return true
+			}
+		}
+		return false
+	}
+
 	suggestEngine := autosuggest.NewEngine()
 	updateGhostText = func() {
 		if !appConfig.GhostText || tabs[activeTabIdx].Term.IsAlt() || isSearchOpen || isPrefOpen || isPasteModalOpen {
 			activeGhostText = ""
 			return
 		}
+		curPTY := tabs[activeTabIdx].PTY
+		if !curPTY.IsForegroundShell() || isPasswordPrompt(tabs[activeTabIdx].Term) {
+			activeGhostText = ""
+			return
+		}
 		trimmed := strings.TrimLeft(currentInputBuffer, " ")
 		if len(trimmed) >= 1 {
-			activeGhostText = suggestEngine.Suggest(trimmed)
+			activeGhostText = suggestEngine.Suggest(trimmed, curPTY.GetCwd())
 		} else {
 			activeGhostText = ""
 		}
@@ -367,6 +376,11 @@ func main() {
 
 	updateDiagnostics = func() {
 		if !appConfig.Diagnostics || tabs[activeTabIdx].Term.IsAlt() || isSearchOpen || isPrefOpen || isPasteModalOpen {
+			activeDiag = nil
+			return
+		}
+		curPTY := tabs[activeTabIdx].PTY
+		if !curPTY.IsForegroundShell() || isPasswordPrompt(tabs[activeTabIdx].Term) {
 			activeDiag = nil
 			return
 		}
@@ -452,6 +466,152 @@ func main() {
 			updateSearchMatches()
 		}
 
+		triggerRedraw()
+	}
+
+	getSettingsItems := func() []render.PrefOption {
+		themeDisplay := appConfig.Theme
+		switch appConfig.Theme {
+		case "auto":
+			themeDisplay = "Auto"
+		case "tokyo-night":
+			themeDisplay = "Tokyo Night"
+		case "catppuccin-mocha":
+			themeDisplay = "Catppuccin"
+		case "minecraft":
+			themeDisplay = "Minecraft"
+		case "tokyo-day":
+			themeDisplay = "Tokyo Day"
+		case "solarized-light":
+			themeDisplay = "Solarized"
+		}
+
+		return []render.PrefOption{
+			{
+				ID:       "diagnostics",
+				Label:    "Live Diagnostics",
+				IsToggle: true,
+				Enabled:  appConfig.Diagnostics,
+			},
+			{
+				ID:       "ghost_text",
+				Label:    "Ghost Autocomplete",
+				IsToggle: true,
+				Enabled:  appConfig.GhostText,
+			},
+			{
+				ID:       "paste_guard",
+				Label:    "Multiline Paste Guard",
+				IsToggle: true,
+				Enabled:  appConfig.ConfirmMultilinePaste,
+			},
+			{
+				ID:       "sanitize_paste",
+				Label:    "Sanitize Pasted Text",
+				IsToggle: true,
+				Enabled:  appConfig.SanitizePaste,
+			},
+			{
+				ID:       "search",
+				Label:    "Find in Buffer",
+				IsToggle: true,
+				Enabled:  isSearchOpen,
+			},
+			{
+				ID:       "theme",
+				Label:    "Color Theme",
+				Value:    themeDisplay,
+			},
+			{
+				ID:       "font_size",
+				Label:    "Font Size",
+				Value:    fmt.Sprintf("%.0fpt", appConfig.FontSize),
+			},
+			{
+				ID:       "opacity",
+				Label:    "Window Opacity",
+				Value:    fmt.Sprintf("%d%%", int(appConfig.Opacity*100)),
+			},
+		}
+	}
+
+	executeSettingsAction := func(item render.PrefOption, isSecondaryAction bool) {
+		switch item.ID {
+		case "diagnostics":
+			appConfig.Diagnostics = !appConfig.Diagnostics
+			_ = config.Save(appConfig)
+			if !appConfig.Diagnostics {
+				activeDiag = nil
+			} else {
+				updateDiagnostics()
+			}
+		case "ghost_text":
+			appConfig.GhostText = !appConfig.GhostText
+			_ = config.Save(appConfig)
+			if !appConfig.GhostText {
+				activeGhostText = ""
+			} else {
+				updateGhostText()
+			}
+		case "paste_guard":
+			appConfig.ConfirmMultilinePaste = !appConfig.ConfirmMultilinePaste
+			_ = config.Save(appConfig)
+		case "sanitize_paste":
+			appConfig.SanitizePaste = !appConfig.SanitizePaste
+			_ = config.Save(appConfig)
+		case "search":
+			isSearchOpen = !isSearchOpen
+			if isSearchOpen {
+				updateSearchMatches()
+			}
+		case "theme":
+			themesList := []string{"tokyo-night", "catppuccin-mocha", "minecraft", "tokyo-day", "solarized-light", "auto"}
+			curIdx := 0
+			for i, thID := range themesList {
+				if thID == appConfig.Theme {
+					curIdx = i
+					break
+				}
+			}
+			nextIdx := (curIdx + 1) % len(themesList)
+			if isSecondaryAction {
+				nextIdx = (curIdx - 1 + len(themesList)) % len(themesList)
+			}
+			appConfig.Theme = themesList[nextIdx]
+			savedThemeID = appConfig.Theme
+			_ = config.Save(appConfig)
+			activeTheme = terminal.ResolveTheme(savedThemeID, systemIsDark)
+			for _, t := range tabs {
+				t.Term.SetTheme(activeTheme)
+				t.Term.MarkAllDirty()
+			}
+		case "font_size":
+			if isSecondaryAction {
+				applyZoom(platform.ActionZoomOut)
+			} else {
+				applyZoom(platform.ActionZoomIn)
+			}
+		case "opacity":
+			opacities := []float64{1.0, 0.95, 0.90, 0.85, 0.80, 0.75}
+			curIdx := 0
+			for i, op := range opacities {
+				diff := op - appConfig.Opacity
+				if diff < 0 {
+					diff = -diff
+				}
+				if diff < 0.02 {
+					curIdx = i
+					break
+				}
+			}
+			nextIdx := (curIdx + 1) % len(opacities)
+			if isSecondaryAction {
+				nextIdx = (curIdx - 1 + len(opacities)) % len(opacities)
+			}
+			appConfig.Opacity = opacities[nextIdx]
+			_ = config.Save(appConfig)
+			win.SetOpacity(appConfig.Opacity)
+		}
 		triggerRedraw()
 	}
 
@@ -549,7 +709,7 @@ func main() {
 		}
 
 		if isPrefOpen {
-			canvas.RenderPreferencesModal(activeTerm.Theme(), prefIndex, prefOptions, savedThemeID)
+			canvas.RenderPreferencesModal(activeTerm.Theme(), prefIndex, getSettingsItems(), savedThemeID)
 		}
 
 		if isPasteModalOpen {
@@ -629,6 +789,10 @@ func main() {
 		lastClickX    int
 		lastClickY    int
 		clickCount    int
+
+		lastHeaderClickTime time.Time
+		lastHeaderClickX    int
+		lastHeaderClickY    int
 	)
 
 	autoScrollTicker := time.NewTicker(40 * time.Millisecond)
@@ -928,47 +1092,30 @@ func main() {
 				}
 
 				if isPrefOpen {
-					modalW := 440
-					rowH := 28
+					items := getSettingsItems()
+					modalX := canvas.PrefModalBox[0]
+					modalY := canvas.PrefModalBox[1]
+					modalW := canvas.PrefModalBox[2]
+					modalH := canvas.PrefModalBox[3]
+					rowH := canvas.PrefModalBox[4]
 					headerH := 36
-					footerH := 32
-					modalH := headerH + len(prefOptions)*rowH + footerH
-					if modalW > int(currentWidth)-40 {
-						modalW = int(currentWidth) - 40
+					if activeTheme.ID == "minecraft" {
+						headerH = 40
 					}
-					if modalH > int(currentHeight)-40 {
-						modalH = int(currentHeight) - 40
-					}
-					modalX := (int(currentWidth) - modalW) / 2
-					modalY := (int(currentHeight) - modalH) / 2
 
 					px := int(e.EventX)
 					py := int(e.EventY)
 
 					if px >= modalX && px < modalX+modalW && py >= modalY && py < modalY+modalH {
 						optStartY := modalY + headerH + 4
-						if py >= optStartY && py < optStartY+len(prefOptions)*rowH {
+						if py >= optStartY && py < optStartY+len(items)*rowH {
 							clickedIdx := (py - optStartY) / rowH
-							if clickedIdx >= 0 && clickedIdx < len(prefOptions) {
+							if clickedIdx >= 0 && clickedIdx < len(items) {
 								prefIndex = clickedIdx
-								appConfig.Theme = prefOptions[prefIndex].ID
-								savedThemeID = appConfig.Theme
-								_ = config.Save(appConfig)
-								activeTheme = terminal.ResolveTheme(savedThemeID, systemIsDark)
-								for _, t := range tabs {
-									t.Term.SetTheme(activeTheme)
-									t.Term.MarkAllDirty()
-								}
-								isPrefOpen = false
-								triggerRedraw()
+								executeSettingsAction(items[clickedIdx], false)
 							}
 						}
 					} else {
-						activeTheme = terminal.ResolveTheme(savedThemeID, systemIsDark)
-						for _, t := range tabs {
-							t.Term.SetTheme(activeTheme)
-							t.Term.MarkAllDirty()
-						}
 						isPrefOpen = false
 						triggerRedraw()
 					}
@@ -982,7 +1129,7 @@ func main() {
 				}
 
 				if int(e.EventY) < render.HeaderHeight {
-					// Top-right window controls: Close, Maximize, Minimize
+					// Top-right window controls: Settings, Minimize, Maximize, Close
 					if int(e.EventX) >= int(currentWidth)-36 {
 						for _, t := range tabs {
 							t.Close()
@@ -994,16 +1141,9 @@ func main() {
 					} else if int(e.EventX) >= int(currentWidth)-108 && int(e.EventX) < int(currentWidth)-72 {
 						win.Minimize()
 						continue
-					} else if int(e.EventX) >= int(currentWidth)-180 && int(e.EventX) < int(currentWidth)-108 {
+					} else if int(e.EventX) >= int(currentWidth)-144 && int(e.EventX) < int(currentWidth)-108 {
 						isPrefOpen = !isPrefOpen
-						if isPrefOpen {
-							for i, opt := range prefOptions {
-								if opt.ID == savedThemeID {
-									prefIndex = i
-									break
-								}
-							}
-						}
+						prefIndex = 0
 						activeTerm.MarkAllDirty()
 						triggerRedraw()
 						continue
@@ -1016,6 +1156,38 @@ func main() {
 							switchTab(len(tabs) - 1)
 						}
 						continue
+					}
+
+					// Double-click on header (outside close/new buttons) toggles maximize
+					isTabCloseBtn := false
+					for _, thb := range canvas.TabHitBoxes {
+						if int(e.EventX) >= thb.CloseX && int(e.EventX) <= thb.CloseEndX {
+							isTabCloseBtn = true
+							break
+						}
+					}
+
+					isControlBtn := int(e.EventX) >= int(currentWidth)-144
+
+					now := time.Now()
+					dx := int(e.EventX) - lastHeaderClickX
+					dy := int(e.EventY) - lastHeaderClickY
+					if dx < 0 {
+						dx = -dx
+					}
+					if dy < 0 {
+						dy = -dy
+					}
+
+					if !isTabCloseBtn && !isControlBtn && now.Sub(lastHeaderClickTime) < 350*time.Millisecond && dx < 10 && dy < 10 {
+						lastHeaderClickTime = time.Time{}
+						win.ToggleMaximize()
+						continue
+					}
+					if !isTabCloseBtn && !isControlBtn {
+						lastHeaderClickTime = now
+						lastHeaderClickX = int(e.EventX)
+						lastHeaderClickY = int(e.EventY)
 					}
 
 					tabHandled := false
@@ -1133,15 +1305,11 @@ func main() {
 				}
 			} else if e.Detail == 4 {
 				if isPrefOpen {
+					items := getSettingsItems()
 					if prefIndex > 0 {
 						prefIndex--
 					} else {
-						prefIndex = len(prefOptions) - 1
-					}
-					activeTheme = terminal.ResolveTheme(prefOptions[prefIndex].ID, systemIsDark)
-					for _, t := range tabs {
-						t.Term.SetTheme(activeTheme)
-						t.Term.MarkAllDirty()
+						prefIndex = len(items) - 1
 					}
 					triggerRedraw()
 					continue
@@ -1163,15 +1331,11 @@ func main() {
 				}
 			} else if e.Detail == 5 {
 				if isPrefOpen {
-					if prefIndex < len(prefOptions)-1 {
+					items := getSettingsItems()
+					if prefIndex < len(items)-1 {
 						prefIndex++
 					} else {
 						prefIndex = 0
-					}
-					activeTheme = terminal.ResolveTheme(prefOptions[prefIndex].ID, systemIsDark)
-					for _, t := range tabs {
-						t.Term.SetTheme(activeTheme)
-						t.Term.MarkAllDirty()
 					}
 					triggerRedraw()
 					continue
@@ -1249,117 +1413,84 @@ func main() {
 			}
 
 			if action == platform.ActionPreferences {
-					isPrefOpen = !isPrefOpen
-					if isPrefOpen {
-						for i, opt := range prefOptions {
-							if opt.ID == savedThemeID {
-								prefIndex = i
-								break
-							}
-						}
+				isPrefOpen = !isPrefOpen
+				if isPrefOpen {
+					prefIndex = 0
+				}
+				triggerRedraw()
+				continue
+			}
+
+			if isPasteModalOpen {
+				switch keysym {
+				case 0xff1b, 'c', 'C', 'n', 'N': // Escape, 'c', 'n' -> Cancel
+					isPasteModalOpen = false
+					pendingPasteText = ""
+					pendingPasteWarnings = nil
+					triggerRedraw()
+				case 0xff0d, 'p', 'P', 'y', 'Y': // Enter, 'p', 'y' -> Paste as-is
+					textToPaste := pendingPasteText
+					isPasteModalOpen = false
+					pendingPasteText = ""
+					pendingPasteWarnings = nil
+					doWritePastedText(textToPaste)
+				case 's', 'S': // 's' -> Flatten to single line
+					textToPaste := paste.FlattenToSingleLine(pendingPasteText)
+					isPasteModalOpen = false
+					pendingPasteText = ""
+					pendingPasteWarnings = nil
+					doWritePastedText(textToPaste)
+				case 'q', 'Q': // 'q' -> Quote URL / argument
+					textToPaste := paste.QuoteURL(pendingPasteText)
+					isPasteModalOpen = false
+					pendingPasteText = ""
+					pendingPasteWarnings = nil
+					doWritePastedText(textToPaste)
+				}
+				continue
+			}
+
+			if isPrefOpen {
+				items := getSettingsItems()
+				switch keysym {
+				case 0xff52, 'k', 'K': // Up
+					if prefIndex > 0 {
+						prefIndex--
 					} else {
-						activeTheme = terminal.ResolveTheme(savedThemeID, systemIsDark)
-						for _, t := range tabs {
-							t.Term.SetTheme(activeTheme)
-							t.Term.MarkAllDirty()
-						}
+						prefIndex = len(items) - 1
 					}
 					triggerRedraw()
-					continue
-				}
-
-				if isPasteModalOpen {
-					switch keysym {
-					case 0xff1b, 'c', 'C', 'n', 'N': // Escape, 'c', 'n' -> Cancel
-						isPasteModalOpen = false
-						pendingPasteText = ""
-						pendingPasteWarnings = nil
-						triggerRedraw()
-					case 0xff0d, 'p', 'P', 'y', 'Y': // Enter, 'p', 'y' -> Paste as-is
-						textToPaste := pendingPasteText
-						isPasteModalOpen = false
-						pendingPasteText = ""
-						pendingPasteWarnings = nil
-						doWritePastedText(textToPaste)
-					case 's', 'S': // 's' -> Flatten to single line
-						textToPaste := paste.FlattenToSingleLine(pendingPasteText)
-						isPasteModalOpen = false
-						pendingPasteText = ""
-						pendingPasteWarnings = nil
-						doWritePastedText(textToPaste)
-					case 'q', 'Q': // 'q' -> Quote URL / argument
-						textToPaste := paste.QuoteURL(pendingPasteText)
-						isPasteModalOpen = false
-						pendingPasteText = ""
-						pendingPasteWarnings = nil
-						doWritePastedText(textToPaste)
+				case 0xff54, 'j', 'J': // Down
+					if prefIndex < len(items)-1 {
+						prefIndex++
+					} else {
+						prefIndex = 0
 					}
-					continue
-				}
-
-				if isPrefOpen {
-					switch keysym {
-					case 0xff52, 'k', 'K':
-						if prefIndex > 0 {
-							prefIndex--
-						} else {
-							prefIndex = len(prefOptions) - 1
-						}
-						activeTheme = terminal.ResolveTheme(prefOptions[prefIndex].ID, systemIsDark)
-						for _, t := range tabs {
-							t.Term.SetTheme(activeTheme)
-							t.Term.MarkAllDirty()
-						}
-						triggerRedraw()
-					case 0xff54, 'j', 'J':
-						if prefIndex < len(prefOptions)-1 {
-							prefIndex++
-						} else {
-							prefIndex = 0
-						}
-						activeTheme = terminal.ResolveTheme(prefOptions[prefIndex].ID, systemIsDark)
-						for _, t := range tabs {
-							t.Term.SetTheme(activeTheme)
-							t.Term.MarkAllDirty()
-						}
-						triggerRedraw()
-					case 0xff0d:
-						appConfig.Theme = prefOptions[prefIndex].ID
-						savedThemeID = appConfig.Theme
-						_ = config.Save(appConfig)
-						activeTheme = terminal.ResolveTheme(savedThemeID, systemIsDark)
-						for _, t := range tabs {
-							t.Term.SetTheme(activeTheme)
-							t.Term.MarkAllDirty()
-						}
-						isPrefOpen = false
-						triggerRedraw()
-					case 0xff1b, 'q', 'Q':
-						activeTheme = terminal.ResolveTheme(savedThemeID, systemIsDark)
-						for _, t := range tabs {
-							t.Term.SetTheme(activeTheme)
-							t.Term.MarkAllDirty()
-						}
-						isPrefOpen = false
-						triggerRedraw()
-					case '1', '2', '3', '4', '5':
-						idx := int(keysym - '1')
-						if idx >= 0 && idx < len(prefOptions) {
-							prefIndex = idx
-							appConfig.Theme = prefOptions[prefIndex].ID
-							savedThemeID = appConfig.Theme
-							_ = config.Save(appConfig)
-							activeTheme = terminal.ResolveTheme(savedThemeID, systemIsDark)
-							for _, t := range tabs {
-								t.Term.SetTheme(activeTheme)
-								t.Term.MarkAllDirty()
-							}
-							isPrefOpen = false
-							triggerRedraw()
-						}
+					triggerRedraw()
+				case 0xff51, 'h', 'H', '-': // Left / Minus (secondary action / decrease / cycle back)
+					if prefIndex >= 0 && prefIndex < len(items) {
+						executeSettingsAction(items[prefIndex], true)
 					}
-					continue
+				case 0xff53, 'l', 'L', '+', '=': // Right / Plus (primary action / increase / cycle forward)
+					if prefIndex >= 0 && prefIndex < len(items) {
+						executeSettingsAction(items[prefIndex], false)
+					}
+				case 0xff0d, ' ': // Enter / Space (toggle / activate)
+					if prefIndex >= 0 && prefIndex < len(items) {
+						executeSettingsAction(items[prefIndex], false)
+					}
+				case 0xff1b, 'q', 'Q': // Escape / 'q' (close modal)
+					isPrefOpen = false
+					triggerRedraw()
+				case '1', '2', '3', '4', '5', '6', '7', '8':
+					idx := int(keysym - '1')
+					if idx >= 0 && idx < len(items) {
+						prefIndex = idx
+						executeSettingsAction(items[prefIndex], false)
+					}
 				}
+				continue
+			}
 
 				if action == platform.ActionSearch {
 					isSearchOpen = !isSearchOpen
@@ -1465,14 +1596,25 @@ func main() {
 
 				if action == platform.ActionCopy {
 					if activeTerm.HasSelection() {
-						win.SetClipboard(activeTerm.GetSelectedText())
+						text := activeTerm.GetSelectedText()
+						if text != "" {
+							win.SetClipboard(text)
+						}
 						activeTerm.ClearSelection()
 						triggerRedraw()
+					} else {
+						text := activeTerm.GetAllText()
+						if text != "" {
+							win.SetClipboard(text)
+						}
 					}
 				} else if action == platform.ActionPaste {
 					win.Paste()
 				} else if action == platform.ActionSelectAll {
 					activeTerm.SelectAll()
+					if txt := activeTerm.GetSelectedText(); txt != "" {
+						win.SetPrimary(txt)
+					}
 					triggerRedraw()
 					continue
 				} else if action == platform.ActionScrollUp {
@@ -1507,6 +1649,11 @@ func main() {
 						if activeGhostText != "" && !activeTerm.IsAlt() {
 							isAcceptKey := (keysym == 0xff53) || (keysym == 0xff09 && (e.State&platform.ModShift) == 0)
 							if isAcceptKey {
+								// If user typed unescaped space (e.g. "cd my "), replace it with escaped space
+								if len(currentInputBuffer) > 0 && currentInputBuffer[len(currentInputBuffer)-1] == ' ' && !strings.HasSuffix(currentInputBuffer, "\\ ") {
+									_, _ = activePTY.Write([]byte{0x08, '\\', ' '})
+									currentInputBuffer = currentInputBuffer[:len(currentInputBuffer)-1] + "\\ "
+								}
 								toWrite := []byte(activeGhostText)
 								_, _ = activePTY.Write(toWrite)
 								currentInputBuffer += activeGhostText
@@ -1520,49 +1667,56 @@ func main() {
 
 						// Track input buffer for ghost text matching and live diagnostics
 						if !activeTerm.IsAlt() {
-							isAlt := (e.State & platform.ModAlt) != 0
-							if isAlt && (keysym == 0xff0d || keysym == 0xff8d) && activeDiag != nil {
-								// Alt+Enter applies quickfix if available!
-								diag := diagnostics.Analyze(strings.TrimSpace(currentInputBuffer))
-								if diag != nil && diag.QuickFix != "" {
-									// Erase current line in terminal: send Ctrl+U (\x15), then type quickfix
-									_, _ = activePTY.Write([]byte{0x15})
-									_, _ = activePTY.Write([]byte(diag.QuickFix))
-									currentInputBuffer = diag.QuickFix
-									updateGhostText()
-									updateDiagnostics()
-									activeTerm.ClearSelection()
-									activeTerm.ResetScroll()
-									triggerRedraw()
-									continue
-								}
-							}
-
-							if keysym == 0xff0d || keysym == 0xff8d { // Enter
-								trimmedCmd := strings.TrimSpace(currentInputBuffer)
-								if len(trimmedCmd) >= 2 {
-									suggestEngine.Add(trimmedCmd)
-									if strings.HasPrefix(trimmedCmd, "alias ") || strings.HasPrefix(trimmedCmd, "abbr ") {
-										diagnostics.RegisterAliasFromLine(trimmedCmd)
+							// If a foreground command is executing or password is being read, suppress suggestions/diagnostics and do not record keys
+							if !activePTY.IsForegroundShell() || isPasswordPrompt(activeTerm) {
+								currentInputBuffer = ""
+								activeGhostText = ""
+								activeDiag = nil
+							} else {
+								isAlt := (e.State & platform.ModAlt) != 0
+								if isAlt && (keysym == 0xff0d || keysym == 0xff8d) && activeDiag != nil {
+									// Alt+Enter applies quickfix if available!
+									diag := diagnostics.Analyze(strings.TrimSpace(currentInputBuffer))
+									if diag != nil && diag.QuickFix != "" {
+										// Erase current line in terminal: send Ctrl+U (\x15), then type quickfix
+										_, _ = activePTY.Write([]byte{0x15})
+										_, _ = activePTY.Write([]byte(diag.QuickFix))
+										currentInputBuffer = diag.QuickFix
+										updateGhostText()
+										updateDiagnostics()
+										activeTerm.ClearSelection()
+										activeTerm.ResetScroll()
+										triggerRedraw()
+										continue
 									}
 								}
-								currentInputBuffer = ""
-								activeGhostText = ""
-								activeDiag = nil
-							} else if keysym == 0xff08 { // Backspace
-								if len(currentInputBuffer) > 0 {
-									currentInputBuffer = currentInputBuffer[:len(currentInputBuffer)-1]
+
+								if keysym == 0xff0d || keysym == 0xff8d { // Enter
+									trimmedCmd := strings.TrimSpace(currentInputBuffer)
+									if len(trimmedCmd) >= 2 {
+										suggestEngine.Add(trimmedCmd)
+										if strings.HasPrefix(trimmedCmd, "alias ") || strings.HasPrefix(trimmedCmd, "abbr ") {
+											diagnostics.RegisterAliasFromLine(trimmedCmd)
+										}
+									}
+									currentInputBuffer = ""
+									activeGhostText = ""
+									activeDiag = nil
+								} else if keysym == 0xff08 { // Backspace
+									if len(currentInputBuffer) > 0 {
+										currentInputBuffer = currentInputBuffer[:len(currentInputBuffer)-1]
+										updateGhostText()
+										updateDiagnostics()
+									}
+								} else if keysym == 0xff1b || (len(data) == 1 && (data[0] == 0x03 || data[0] == 0x15)) { // Escape, Ctrl+C, Ctrl+U
+									currentInputBuffer = ""
+									activeGhostText = ""
+									activeDiag = nil
+								} else if len(data) > 0 && data[0] >= 32 && data[0] != 127 { // Normal printable characters (ASCII or UTF-8)
+									currentInputBuffer += data
 									updateGhostText()
 									updateDiagnostics()
 								}
-							} else if keysym == 0xff1b || (len(data) == 1 && (data[0] == 0x03 || data[0] == 0x15)) { // Escape, Ctrl+C, Ctrl+U
-								currentInputBuffer = ""
-								activeGhostText = ""
-								activeDiag = nil
-							} else if len(data) == 1 && data[0] >= 32 && data[0] <= 126 { // Normal printable ASCII
-								currentInputBuffer += string(data[0])
-								updateGhostText()
-								updateDiagnostics()
 							}
 						}
 

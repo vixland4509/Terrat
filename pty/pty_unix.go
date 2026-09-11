@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/creack/pty"
+	"golang.org/x/sys/unix"
 )
 
 type TerminalPTY struct {
@@ -95,3 +96,44 @@ func (p *TerminalPTY) Wait() (*os.ProcessState, error) {
 	}
 	return p.cmd.ProcessState, p.cmd.Wait()
 }
+
+// IsEcho returns true if the terminal has ECHO enabled (i.e. not reading a password)
+func (p *TerminalPTY) IsEcho() bool {
+	if p == nil || p.file == nil {
+		return true
+	}
+	t, err := unix.IoctlGetTermios(int(p.file.Fd()), unix.TCGETS)
+	if err != nil {
+		return true
+	}
+	return (t.Lflag & unix.ECHO) != 0
+}
+
+// IsForegroundShell returns true if the root shell process is the foreground process on the terminal
+func (p *TerminalPTY) IsForegroundShell() bool {
+	if p == nil || p.file == nil || p.cmd == nil || p.cmd.Process == nil {
+		return true
+	}
+	pgrp, err := unix.IoctlGetInt(int(p.file.Fd()), unix.TIOCGPGRP)
+	if err != nil {
+		return true
+	}
+	shellPgid, err := syscall.Getpgid(p.cmd.Process.Pid)
+	if err != nil {
+		shellPgid = p.cmd.Process.Pid
+	}
+	return pgrp == shellPgid
+}
+
+// GetCwd returns the current working directory of the shell session
+func (p *TerminalPTY) GetCwd() string {
+	if p == nil || p.cmd == nil || p.cmd.Process == nil {
+		return ""
+	}
+	cwd, err := os.Readlink(fmt.Sprintf("/proc/%d/cwd", p.cmd.Process.Pid))
+	if err != nil {
+		return ""
+	}
+	return cwd
+}
+

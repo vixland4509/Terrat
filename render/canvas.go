@@ -197,6 +197,7 @@ type Canvas struct {
 
 	TabHitBoxes  []TabHitBox
 	NewTabHitBox [4]int
+	PrefModalBox [5]int // [0]: x, [1]: y, [2]: w, [3]: h, [4]: rowH
 }
 
 func NewCanvas(fe *FontEngine) *Canvas {
@@ -389,19 +390,28 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 	}
 	c.NewTabHitBox = [4]int{btnX - 2, btnX + btnW + 2, 0, HeaderHeight}
 
-	// Window controls on the top-right (Minimize, Maximize, Close)
+	// Window controls on the top-right (Settings, Minimize, Maximize, Close)
 	winBtnW := 36
+	settingsBtnX := c.Width - winBtnW*4
 	minBtnX := c.Width - winBtnW*3
 	maxBtnX := c.Width - winBtnW*2
 	closeBtnX := c.Width - winBtnW
 
 	if isMC {
+		DrawMinecraftBlock(c.Pixels, c.Stride, settingsBtnX+12, 11, "diamond")
 		DrawMinecraftBlock(c.Pixels, c.Stride, minBtnX+12, 11, "gold")
 		DrawMinecraftBlock(c.Pixels, c.Stride, maxBtnX+12, 11, "emerald")
 		DrawMinecraftBlock(c.Pixels, c.Stride, closeBtnX+12, 11, "redstone")
 	} else {
 		midY := HeaderHeight / 2
 		btnFG := mutedTextPixel
+
+		// 0. Settings / Toggles: clean minimalist sliders icon
+		sliderX := settingsBtnX + 13
+		DrawHLine(c.Pixels, c.Stride, sliderX, midY-3, 10, btnFG)
+		DrawVLine(c.Pixels, c.Stride, sliderX+7, midY-5, 5, btnFG)
+		DrawHLine(c.Pixels, c.Stride, sliderX, midY+3, 10, btnFG)
+		DrawVLine(c.Pixels, c.Stride, sliderX+2, midY+1, 5, btnFG)
 
 		// 1. Minimize: clean horizontal line
 		DrawHLine(c.Pixels, c.Stride, minBtnX+13, midY, 10, btnFG)
@@ -430,7 +440,7 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 		hudInfo = fmt.Sprintf("%dx%d", c.cols, c.rows)
 	}
 	hudLen := len(hudInfo)
-	hudX := minBtnX - (hudLen * charW) - 16
+	hudX := settingsBtnX - (hudLen * charW) - 16
 	if hudX > btnX+btnW+16 {
 		if isMC {
 			c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, hudX, titleY, hudInfo, 0x55ffff, 0x153f3f, true)
@@ -685,28 +695,55 @@ type PrefOption struct {
 	ID       string
 	Label    string
 	Sublabel string
+	Value    string
+	IsToggle bool
+	Enabled  bool
 }
 
 func (c *Canvas) RenderPreferencesModal(th *terminal.Theme, selectedIdx int, options []PrefOption, savedID string) (modalX, modalY, modalW, modalH, rowH int) {
 	charW := c.fontEngine.CharWidth()
 	charH := c.fontEngine.CharHeight()
 
+	maxChars := 28
+	for _, opt := range options {
+		l := len(opt.Label) + 4
+		if opt.IsToggle {
+			l += 8 // for "   [ON]"
+		} else if opt.Value != "" {
+			l += len(opt.Value) + 3
+		}
+		if l > maxChars {
+			maxChars = l
+		}
+	}
+
 	if th.ID == "minecraft" {
-		modalW = 460
-		rowH = 32
+		modalW = maxChars*charW + 44
+		if modalW < 300 {
+			modalW = 300
+		}
+		rowH = charH + 14
+		if rowH < 30 {
+			rowH = 30
+		}
 		headerH := 40
 		footerH := 36
 		modalH = headerH + len(options)*rowH + footerH
 
-		if modalW > c.Width-40 {
-			modalW = c.Width - 40
+		if modalW > c.Width-20 {
+			modalW = c.Width - 20
 		}
-		if modalH > c.Height-40 {
-			modalH = c.Height - 40
+		if modalH > c.Height-HeaderHeight-10 {
+			modalH = c.Height - HeaderHeight - 10
 		}
 
-		modalX = (c.Width - modalW) / 2
-		modalY = (c.Height - modalH) / 2
+		modalX = c.Width - modalW - 12
+		if modalX < 6 {
+			modalX = 6
+		}
+		modalY = HeaderHeight + 6
+
+		c.PrefModalBox = [5]int{modalX, modalY, modalW, modalH, rowH}
 
 		// 1. Tiled Minecraft Dirt menu background
 		FillPattern16x16(c.Pixels, c.Stride, modalX, modalY, modalW, modalH, &mcDirt16x16)
@@ -723,8 +760,8 @@ func (c *Canvas) RenderPreferencesModal(th *terminal.Theme, selectedIdx int, opt
 		DrawHLine(c.Pixels, c.Stride, modalX+4, modalY+headerH-2, modalW-8, 0x140e09)
 		DrawHLine(c.Pixels, c.Stride, modalX+4, modalY+headerH-1, modalW-8, 0x3e291c)
 
-		// Header Title: Centered glowing Minecraft yellow with dark drop shadow
-		title := "PREFERENCES // THEME SELECTOR"
+		// Header Title
+		title := "SETTINGS // QUICK TOGGLES"
 		titleX := modalX + (modalW-len(title)*charW)/2
 		c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, titleX, modalY+(headerH-charH)/2, title, 0xffff55, 0x3f3f15, true)
 
@@ -733,7 +770,6 @@ func (c *Canvas) RenderPreferencesModal(th *terminal.Theme, selectedIdx int, opt
 		for i, opt := range options {
 			rowY := optStartY + i*rowH
 			isSelected := (i == selectedIdx)
-			isSaved := (opt.ID == savedID)
 
 			btnX := modalX + 12
 			btnW := modalW - 24
@@ -745,29 +781,32 @@ func (c *Canvas) RenderPreferencesModal(th *terminal.Theme, selectedIdx int, opt
 			prefix := "  "
 			labelColor := uint32(0xe0e0e0)
 			labelShadow := uint32(0x383838)
-			subColor := uint32(0xaaaaaa)
-			subShadow := uint32(0x282828)
 
 			if isSelected {
 				prefix = "> "
 				labelColor = 0xffffa0
 				labelShadow = 0x3f3f20
-				subColor = 0x55ffff
-				subShadow = 0x153f3f
 			}
 
-			c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, btnX+12, textY, prefix+opt.Label, labelColor, labelShadow, isSelected)
+			c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, btnX+10, textY, prefix+opt.Label, labelColor, labelShadow, isSelected)
 
-			if opt.Sublabel != "" {
-				subX := btnX + 12 + len(prefix+opt.Label)*charW + 10
-				if subX < btnX+btnW-110 {
-					c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, subX, textY, "("+opt.Sublabel+")", subColor, subShadow, false)
+			if opt.IsToggle {
+				badge := "[OFF]"
+				badgeColor := uint32(0x777777)
+				badgeShadow := uint32(0x1f1f1f)
+				if opt.Enabled {
+					badge = "[ON]"
+					badgeColor = uint32(0x55ff55)
+					badgeShadow = uint32(0x153f15)
 				}
-			}
-
-			if isSaved {
+				badgeX := btnX + btnW - (len(badge) * charW) - 12
+				c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, badgeX, textY, badge, badgeColor, badgeShadow, true)
+			} else if opt.Value != "" {
+				badgeX := btnX + btnW - (len(opt.Value) * charW) - 12
+				c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, badgeX, textY, opt.Value, 0x55ffff, 0x153f3f, true)
+			} else if opt.ID == savedID {
 				activeBadge := "[SAVED]"
-				badgeX := btnX + btnW - (len(activeBadge) * charW) - 14
+				badgeX := btnX + btnW - (len(activeBadge) * charW) - 12
 				c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, badgeX, textY, activeBadge, 0x55ff55, 0x153f15, true)
 			}
 		}
@@ -777,28 +816,40 @@ func (c *Canvas) RenderPreferencesModal(th *terminal.Theme, selectedIdx int, opt
 		DrawHLine(c.Pixels, c.Stride, modalX+4, footerY, modalW-8, 0x140e09)
 		DrawHLine(c.Pixels, c.Stride, modalX+4, footerY+1, modalW-8, 0x3e291c)
 
-		hints := "UP/DOWN: Preview  ENTER: Save  ESC: Exit"
+		hints := "Click/Enter: Toggle  ESC: Close"
 		hintsX := modalX + (modalW-len(hints)*charW)/2
 		c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, hintsX, footerY+(footerH-charH)/2, hints, 0xa0a0a0, 0x282828, false)
 
 		return modalX, modalY, modalW, modalH, rowH
 	}
 
-	modalW = 440
-	rowH = 28
+	modalW = maxChars*charW + 36
+	if modalW < 280 {
+		modalW = 280
+	}
+	rowH = charH + 12
+	if rowH < 26 {
+		rowH = 26
+	}
 	headerH := 36
-	footerH := 32
+	footerH := 28
 	modalH = headerH + len(options)*rowH + footerH
 
-	if modalW > c.Width-40 {
-		modalW = c.Width - 40
+	if modalW > c.Width-20 {
+		modalW = c.Width - 20
 	}
-	if modalH > c.Height-40 {
-		modalH = c.Height - 40
+	if modalH > c.Height-HeaderHeight-10 {
+		modalH = c.Height - HeaderHeight - 10
 	}
 
-	modalX = (c.Width - modalW) / 2
-	modalY = (c.Height - modalH) / 2
+	// Minimal and in the top-right corner under the settings button!
+	modalX = c.Width - modalW - 12
+	if modalX < 6 {
+		modalX = 6
+	}
+	modalY = HeaderHeight + 6
+
+	c.PrefModalBox = [5]int{modalX, modalY, modalW, modalH, rowH}
 
 	modalBGPixel := th.HeaderBG.ToPixel()
 	modalHeaderBGPixel := th.BG.ToPixel()
@@ -813,20 +864,19 @@ func (c *Canvas) RenderPreferencesModal(th *terminal.Theme, selectedIdx int, opt
 
 	FillRect(c.Pixels, c.Stride, modalX, modalY, modalW, headerH, modalHeaderBGPixel)
 	DrawHLine(c.Pixels, c.Stride, modalX, modalY+headerH-1, modalW, th.HeaderLine.ToPixel())
-	c.fontEngine.DrawString(c.Pixels, c.Stride, modalX+16, modalY+(headerH-charH)/2, "PREFERENCES // THEME SELECTOR", badgeTextPixel, modalHeaderBGPixel, true)
+	c.fontEngine.DrawString(c.Pixels, c.Stride, modalX+14, modalY+(headerH-charH)/2, "SETTINGS // QUICK TOGGLES", badgeTextPixel, modalHeaderBGPixel, true)
 
 	optStartY := modalY + headerH + 4
 	for i, opt := range options {
 		rowY := optStartY + i*rowH
 		isSelected := (i == selectedIdx)
-		isSaved := (opt.ID == savedID)
 
 		bgPix := modalBGPixel
 		fgPix := fgPixel
 		if isSelected {
 			bgPix = selBGPixel
 			fgPix = selFGPixel
-			FillRect(c.Pixels, c.Stride, modalX+8, rowY, modalW-16, rowH-2, selBGPixel)
+			FillRect(c.Pixels, c.Stride, modalX+6, rowY, modalW-12, rowH-2, selBGPixel)
 		}
 
 		textY := rowY + (rowH-charH)/2
@@ -835,29 +885,30 @@ func (c *Canvas) RenderPreferencesModal(th *terminal.Theme, selectedIdx int, opt
 		if isSelected {
 			prefix = "> "
 		}
-		c.fontEngine.DrawString(c.Pixels, c.Stride, modalX+14, textY, prefix+opt.Label, fgPix, bgPix, isSelected)
+		c.fontEngine.DrawString(c.Pixels, c.Stride, modalX+12, textY, prefix+opt.Label, fgPix, bgPix, isSelected)
 
-		if opt.Sublabel != "" {
-			subX := modalX + 14 + len(prefix+opt.Label)*charW + 12
-			if subX < modalX+modalW-120 {
-				subColor := mutedTextPixel
-				if isSelected {
-					subColor = selFGPixel
-				}
-				c.fontEngine.DrawString(c.Pixels, c.Stride, subX, textY, "("+opt.Sublabel+")", subColor, bgPix, false)
+		if opt.IsToggle {
+			badge := "[OFF]"
+			badgeColor := mutedTextPixel
+			if opt.Enabled {
+				badge = "[ON]"
+				badgeColor = th.MinDot.ToPixel() // Vivid emerald/green
 			}
-		}
-
-		if isSaved {
+			badgeX := modalX + modalW - (len(badge) * charW) - 14
+			c.fontEngine.DrawString(c.Pixels, c.Stride, badgeX, textY, badge, badgeColor, bgPix, true)
+		} else if opt.Value != "" {
+			badgeX := modalX + modalW - (len(opt.Value) * charW) - 14
+			c.fontEngine.DrawString(c.Pixels, c.Stride, badgeX, textY, opt.Value, badgeTextPixel, bgPix, true)
+		} else if opt.ID == savedID {
 			activeBadge := "[SAVED]"
-			badgeX := modalX + modalW - (len(activeBadge) * charW) - 20
+			badgeX := modalX + modalW - (len(activeBadge) * charW) - 14
 			c.fontEngine.DrawString(c.Pixels, c.Stride, badgeX, textY, activeBadge, badgeTextPixel, bgPix, true)
 		}
 	}
 
 	footerY := modalY + modalH - footerH
 	DrawHLine(c.Pixels, c.Stride, modalX, footerY, modalW, th.HeaderLine.ToPixel())
-	hints := "UP/DOWN: Preview  ENTER: Save  ESC: Exit"
+	hints := "Click/Enter: Toggle  ESC: Close"
 	hintsX := modalX + (modalW-len(hints)*charW)/2
 	if hintsX < modalX+10 {
 		hintsX = modalX + 10

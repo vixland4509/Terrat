@@ -428,7 +428,9 @@ func (t *Terminal) Scroll(delta int) {
 	if t.scrollOff < 0 {
 		t.scrollOff = 0
 	}
-	t.sel.Active = false
+	if t.sel.Mode != SelectionModeAll {
+		t.sel.Active = false
+	}
 	t.dirtyAll = true
 }
 
@@ -437,6 +439,11 @@ func (t *Terminal) ScrollKeepSelection(delta int) {
 	defer t.mu.Unlock()
 
 	if t.isAlt {
+		return
+	}
+
+	if t.sel.Mode == SelectionModeAll {
+		t.dirtyAll = true
 		return
 	}
 
@@ -496,7 +503,9 @@ func (t *Terminal) ScrollToTop() {
 	}
 
 	t.scrollOff = len(t.scrollback)
-	t.sel.Active = false
+	if t.sel.Mode != SelectionModeAll {
+		t.sel.Active = false
+	}
 	t.dirtyAll = true
 }
 
@@ -505,7 +514,9 @@ func (t *Terminal) ResetScroll() {
 	defer t.mu.Unlock()
 	if t.scrollOff != 0 {
 		t.scrollOff = 0
-		t.sel.Active = false
+		if t.sel.Mode != SelectionModeAll {
+			t.sel.Active = false
+		}
 		t.dirtyAll = true
 	}
 }

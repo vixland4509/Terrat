@@ -187,5 +187,25 @@ func (p *TerminalPTY) Wait() (*os.ProcessState, error) {
 	return nil, nil
 }
 
+// IsEcho returns true on Windows as a safe default
+func (p *TerminalPTY) IsEcho() bool {
+	return true
+}
+
+// IsForegroundShell returns true on Windows as a safe default
+func (p *TerminalPTY) IsForegroundShell() bool {
+	return true
+}
+
+// GetCwd returns current directory on Windows
+func (p *TerminalPTY) GetCwd() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return wd
+}
+
 // Make sure TerminalPTY implements io.ReadWriteCloser
 var _ io.ReadWriteCloser = (*TerminalPTY)(nil)
+
