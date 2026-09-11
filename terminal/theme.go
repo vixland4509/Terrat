@@ -141,23 +141,6 @@ var ThemeMinecraft = &Theme{
 	},
 }
 
-var AllThemes = []*Theme{
-	ThemeTokyoNight,
-	ThemeCatppuccinMocha,
-	ThemeMinecraft,
-	ThemeTokyoDay,
-	ThemeSolarizedLight,
-}
-
-func GetTheme(id string) *Theme {
-	for _, t := range AllThemes {
-		if t.ID == id {
-			return t
-		}
-	}
-	return nil
-}
-
 func ResolveTheme(pref string, isSystemDark bool) *Theme {
 	switch pref {
 	case "tokyo-night":
@@ -170,15 +153,7 @@ func ResolveTheme(pref string, isSystemDark bool) *Theme {
 		return ThemeTokyoDay
 	case "solarized-light":
 		return ThemeSolarizedLight
-	case "auto", "":
-		if isSystemDark {
-			return ThemeTokyoNight
-		}
-		return ThemeTokyoDay
 	default:
-		if t := GetTheme(pref); t != nil {
-			return t
-		}
 		if isSystemDark {
 			return ThemeTokyoNight
 		}

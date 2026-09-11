@@ -12,12 +12,11 @@ import (
 )
 
 var (
-	shellAliases sync.Map // map[string]string (alias -> expansion)
-	gitAliases   sync.Map // map[string]bool   (subcommand alias -> true)
+	shellAliases sync.Map
+	gitAliases   sync.Map
 	aliasesOnce  sync.Once
 )
 
-// RegisterAlias adds or updates a shell alias
 func RegisterAlias(name, expansion string) {
 	name = strings.TrimSpace(name)
 	if name != "" {
@@ -25,19 +24,16 @@ func RegisterAlias(name, expansion string) {
 	}
 }
 
-// RegisterAliasFromLine parses and registers an alias from a command line like `alias ll='ls -la'`
 func RegisterAliasFromLine(line string) {
 	parseAliasLine(line)
 }
 
-// IsAlias checks if a given command name is a known shell alias
 func IsAlias(name string) bool {
 	InitAliases()
 	_, ok := shellAliases.Load(name)
 	return ok
 }
 
-// RegisterGitAlias adds a git alias
 func RegisterGitAlias(name string) {
 	name = strings.TrimSpace(name)
 	if name != "" {
@@ -45,24 +41,20 @@ func RegisterGitAlias(name string) {
 	}
 }
 
-// IsGitAlias checks if a given subcommand is a known git alias
 func IsGitAlias(sub string) bool {
 	InitAliases()
 	_, ok := gitAliases.Load(sub)
 	return ok
 }
 
-// InitAliases ensures aliases are loaded from config files and shell environment
 func InitAliases() {
 	aliasesOnce.Do(func() {
 		loadAliasesFromFiles()
 		loadGitAliases()
-		// Async probe for any dynamic aliases from interactive shell
 		go probeShellAliases()
 	})
 }
 
-// parseAliasLine parses standard bash/zsh/fish alias or abbr definitions
 func parseAliasLine(line string) {
 	trimmed := strings.TrimSpace(line)
 	if strings.HasPrefix(trimmed, "alias ") {
@@ -73,14 +65,12 @@ func parseAliasLine(line string) {
 			val = strings.Trim(val, `'"`)
 			RegisterAlias(name, val)
 		} else if spIdx := strings.IndexByte(rest, ' '); spIdx > 0 {
-			// Fish format: alias name 'command'
 			name := strings.TrimSpace(rest[:spIdx])
 			val := strings.TrimSpace(rest[spIdx+1:])
 			val = strings.Trim(val, `'"`)
 			RegisterAlias(name, val)
 		}
 	} else if strings.HasPrefix(trimmed, "abbr ") {
-		// Fish format: abbr -a name cmd or abbr name cmd
 		parts := strings.Fields(trimmed)
 		if len(parts) >= 3 {
 			if parts[1] == "-a" || parts[1] == "--add" {
@@ -121,7 +111,6 @@ func loadAliasesFromFiles() {
 }
 
 func loadGitAliases() {
-	// 1. Scan ~/.gitconfig directly
 	home, err := os.UserHomeDir()
 	if err == nil && home != "" {
 		gitConfigFile := filepath.Join(home, ".gitconfig")
@@ -146,7 +135,6 @@ func loadGitAliases() {
 		}
 	}
 
-	// 2. Also query git config if git binary is present
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 		defer cancel()

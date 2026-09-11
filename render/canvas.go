@@ -197,7 +197,7 @@ type Canvas struct {
 
 	TabHitBoxes  []TabHitBox
 	NewTabHitBox [4]int
-	PrefModalBox [5]int // [0]: x, [1]: y, [2]: w, [3]: h, [4]: rowH
+	PrefModalBox [5]int
 }
 
 func NewCanvas(fe *FontEngine) *Canvas {
@@ -390,7 +390,6 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 	}
 	c.NewTabHitBox = [4]int{btnX - 2, btnX + btnW + 2, 0, HeaderHeight}
 
-	// Window controls on the top-right (Settings, Minimize, Maximize, Close)
 	winBtnW := 36
 	settingsBtnX := c.Width - winBtnW*4
 	minBtnX := c.Width - winBtnW*3
@@ -406,24 +405,20 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 		midY := HeaderHeight / 2
 		btnFG := mutedTextPixel
 
-		// 0. Settings / Toggles: clean minimalist sliders icon
 		sliderX := settingsBtnX + 13
 		DrawHLine(c.Pixels, c.Stride, sliderX, midY-3, 10, btnFG)
 		DrawVLine(c.Pixels, c.Stride, sliderX+7, midY-5, 5, btnFG)
 		DrawHLine(c.Pixels, c.Stride, sliderX, midY+3, 10, btnFG)
 		DrawVLine(c.Pixels, c.Stride, sliderX+2, midY+1, 5, btnFG)
 
-		// 1. Minimize: clean horizontal line
 		DrawHLine(c.Pixels, c.Stride, minBtnX+13, midY, 10, btnFG)
 		DrawHLine(c.Pixels, c.Stride, minBtnX+13, midY+1, 10, btnFG)
 
-		// 2. Maximize / Fullscreen: clean square outline
 		sqSize := 10
 		sqX := maxBtnX + 13
 		sqY := (HeaderHeight - sqSize) / 2
 		DrawRectBorder(c.Pixels, c.Stride, sqX, sqY, sqSize, sqSize, btnFG)
 
-		// 3. Close: clean diagonal cross ✕
 		crossSize := 9
 		crossX := closeBtnX + 13
 		crossY := (HeaderHeight - crossSize) / 2
@@ -449,7 +444,6 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 		}
 	}
 
-	// Render diagnostic notification chip in header bar between tabs and grid size
 	if diag != nil && !term.IsAltLocked() {
 		diagMsg := diag.Message
 		if diag.Suggestion != "" {
@@ -463,9 +457,9 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 			chipX := hudX - chipW - 14
 			if chipX > btnX+btnW+12 {
 				chipY := (HeaderHeight - chipH) / 2
-				chipColor := th.MinDot.ToPixel() // Amber warning
+				chipColor := th.MinDot.ToPixel()
 				if diag.IsError {
-					chipColor = th.CloseDot.ToPixel() // Red error
+					chipColor = th.CloseDot.ToPixel()
 				}
 				if isMC {
 					DrawMinecraftButton(c.Pixels, c.Stride, chipX, chipY, chipW, chipH, false)
@@ -589,7 +583,6 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 		}
 	}
 
-	// Render Ghost Text (inline autosuggestion) directly following the cursor on normal screen
 	if ghostText != "" && !term.IsAltLocked() && scrollOff == 0 && effectiveCurY >= 0 && effectiveCurY < c.rows {
 		ghostY := gridStartY + (effectiveCurY * charH)
 		ghostFGPixel := th.MutedText.ToPixel()
@@ -600,7 +593,6 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 			if gx >= c.cols {
 				break
 			}
-			// Only draw ghost text on empty cells so we never collide with existing characters
 			cell := term.GetCell(gx, effectiveCurY)
 			if cell.Char != 0 && cell.Char != ' ' {
 				break
@@ -612,7 +604,6 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 		}
 	}
 
-	// Render Floating Diagnostic Tooltip directly below cursor row
 	if diag != nil && !term.IsAltLocked() && scrollOff == 0 && effectiveCurY >= 0 && effectiveCurY < c.rows {
 		diagMsg := "💡 " + diag.Message
 		if diag.Suggestion != "" {
@@ -639,16 +630,15 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 			tipX = gridStartX
 		}
 
-		// Show below cursor, or above cursor if at the bottom row
 		tipY := gridStartY + ((effectiveCurY + 1) * charH) + 4
 		if tipY+tipH > c.Height-PaddingBottom {
 			tipY = gridStartY + ((effectiveCurY - 1) * charH) - 4
 		}
 
 		tipBGPix := th.HeaderBG.ToPixel()
-		tipBorderPix := th.MinDot.ToPixel() // Amber
+		tipBorderPix := th.MinDot.ToPixel()
 		if diag.IsError {
-			tipBorderPix = th.CloseDot.ToPixel() // Red
+			tipBorderPix = th.CloseDot.ToPixel()
 		}
 
 		FillRect(c.Pixels, c.Stride, tipX, tipY, tipW, tipH, tipBGPix)
@@ -676,10 +666,8 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 			thumbW := 5
 			thumbX := c.Width - thumbW - 2
 
-			// Draw subtle track
 			FillRect(c.Pixels, c.Stride, thumbX, trackY, thumbW, trackH, th.HeaderBG.ToPixel())
 
-			// Draw thumb (brighter when scrolled)
 			thumbColor := th.MutedText.ToPixel()
 			if scrollOff > 0 {
 				thumbColor = th.BadgeText.ToPixel()
@@ -708,7 +696,7 @@ func (c *Canvas) RenderPreferencesModal(th *terminal.Theme, selectedIdx int, opt
 	for _, opt := range options {
 		l := len(opt.Label) + 4
 		if opt.IsToggle {
-			l += 8 // for "   [ON]"
+			l += 8
 		} else if opt.Value != "" {
 			l += len(opt.Value) + 3
 		}
@@ -745,10 +733,8 @@ func (c *Canvas) RenderPreferencesModal(th *terminal.Theme, selectedIdx int, opt
 
 		c.PrefModalBox = [5]int{modalX, modalY, modalW, modalH, rowH}
 
-		// 1. Tiled Minecraft Dirt menu background
 		FillPattern16x16(c.Pixels, c.Stride, modalX, modalY, modalW, modalH, &mcDirt16x16)
 
-		// 2. 3-layer beveled Minecraft GUI Container border
 		DrawRectBorder(c.Pixels, c.Stride, modalX, modalY, modalW, modalH, 0x000000)
 		DrawRectBorder(c.Pixels, c.Stride, modalX+1, modalY+1, modalW-2, modalH-2, 0x000000)
 		DrawHLine(c.Pixels, c.Stride, modalX+2, modalY+2, modalW-4, 0xc6c6c6)
@@ -756,16 +742,13 @@ func (c *Canvas) RenderPreferencesModal(th *terminal.Theme, selectedIdx int, opt
 		DrawHLine(c.Pixels, c.Stride, modalX+2, modalY+modalH-3, modalW-4, 0x373737)
 		DrawVLine(c.Pixels, c.Stride, modalX+modalW-3, modalY+2, modalH-4, 0x373737)
 
-		// Header separator groove
 		DrawHLine(c.Pixels, c.Stride, modalX+4, modalY+headerH-2, modalW-8, 0x140e09)
 		DrawHLine(c.Pixels, c.Stride, modalX+4, modalY+headerH-1, modalW-8, 0x3e291c)
 
-		// Header Title
 		title := "SETTINGS // QUICK TOGGLES"
 		titleX := modalX + (modalW-len(title)*charW)/2
 		c.fontEngine.DrawStringShadow(c.Pixels, c.Stride, titleX, modalY+(headerH-charH)/2, title, 0xffff55, 0x3f3f15, true)
 
-		// Option Rows as Real Minecraft 3D Buttons
 		optStartY := modalY + headerH + 4
 		for i, opt := range options {
 			rowY := optStartY + i*rowH
@@ -811,7 +794,6 @@ func (c *Canvas) RenderPreferencesModal(th *terminal.Theme, selectedIdx int, opt
 			}
 		}
 
-		// Footer separator groove
 		footerY := modalY + modalH - footerH
 		DrawHLine(c.Pixels, c.Stride, modalX+4, footerY, modalW-8, 0x140e09)
 		DrawHLine(c.Pixels, c.Stride, modalX+4, footerY+1, modalW-8, 0x3e291c)
@@ -842,7 +824,6 @@ func (c *Canvas) RenderPreferencesModal(th *terminal.Theme, selectedIdx int, opt
 		modalH = c.Height - HeaderHeight - 10
 	}
 
-	// Minimal and in the top-right corner under the settings button!
 	modalX = c.Width - modalW - 12
 	if modalX < 6 {
 		modalX = 6
@@ -892,7 +873,7 @@ func (c *Canvas) RenderPreferencesModal(th *terminal.Theme, selectedIdx int, opt
 			badgeColor := mutedTextPixel
 			if opt.Enabled {
 				badge = "[ON]"
-				badgeColor = th.MinDot.ToPixel() // Vivid emerald/green
+				badgeColor = th.MinDot.ToPixel()
 			}
 			badgeX := modalX + modalW - (len(badge) * charW) - 14
 			c.fontEngine.DrawString(c.Pixels, c.Stride, badgeX, textY, badge, badgeColor, bgPix, true)
@@ -1139,15 +1120,13 @@ func (c *Canvas) RenderPasteConfirmModal(th *terminal.Theme, content string, war
 	badgeTextPixel := th.BadgeText.ToPixel()
 	mutedTextPixel := th.MutedText.ToPixel()
 	fgPixel := th.FG.ToPixel()
-	warnPixel := th.MinDot.ToPixel() // Amber
+	warnPixel := th.MinDot.ToPixel()
 	if len(warnings) > 0 {
-		warnPixel = th.CloseDot.ToPixel() // Red
+		warnPixel = th.CloseDot.ToPixel()
 	}
 
-	// 1. Modal background and frame
 	FillRect(c.Pixels, c.Stride, modalX, modalY, modalW, modalH, modalBGPixel)
 
-	// 2. Header
 	FillRect(c.Pixels, c.Stride, modalX, modalY, modalW, headerH, modalHeaderBGPixel)
 	DrawHLine(c.Pixels, c.Stride, modalX, modalY+headerH-1, modalW, th.HeaderLine.ToPixel())
 
@@ -1165,7 +1144,6 @@ func (c *Canvas) RenderPasteConfirmModal(th *terminal.Theme, content string, war
 		c.fontEngine.DrawString(c.Pixels, c.Stride, metaX, modalY+(headerH-charH)/2, metaStr, mutedTextPixel, modalHeaderBGPixel, false)
 	}
 
-	// 3. Safety Warning Banner
 	bannerY := modalY + headerH + 6
 	bannerX := modalX + 14
 	bannerW := modalW - 28
@@ -1182,7 +1160,6 @@ func (c *Canvas) RenderPasteConfirmModal(th *terminal.Theme, content string, war
 	bannerMsg = truncateString(bannerMsg, maxBannerChars, "...")
 	c.fontEngine.DrawString(c.Pixels, c.Stride, bannerX+10, bannerY+(bannerH-charH)/2, bannerMsg, warnPixel, modalHeaderBGPixel, true)
 
-	// 4. Preview Box
 	boxX := modalX + 14
 	boxY := bannerY + bannerH + 8
 	boxW := modalW - 28
@@ -1220,7 +1197,6 @@ func (c *Canvas) RenderPasteConfirmModal(th *terminal.Theme, content string, war
 		}
 	}
 
-	// 5. Footer action hints
 	footerY := modalY + modalH - footerH
 	DrawHLine(c.Pixels, c.Stride, modalX, footerY, modalW, th.HeaderLine.ToPixel())
 
@@ -1236,7 +1212,6 @@ func (c *Canvas) RenderPasteConfirmModal(th *terminal.Theme, content string, war
 	}
 	c.fontEngine.DrawString(c.Pixels, c.Stride, hintsX, footerY+(footerH-charH)/2, hints, mutedTextPixel, modalBGPixel, false)
 
-	// 6. Outer Border
 	DrawRectBorder(c.Pixels, c.Stride, modalX, modalY, modalW, modalH, borderPixel)
 
 	return modalX, modalY, modalW, modalH

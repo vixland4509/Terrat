@@ -24,7 +24,6 @@ type TerminalPTY struct {
 }
 
 func Start(cols, rows, pixelWidth, pixelHeight uint16, customCmd ...string) (*TerminalPTY, error) {
-	// Create pipes for pseudo console
 	var inRead, inWrite windows.Handle
 	var outRead, outWrite windows.Handle
 
@@ -43,7 +42,6 @@ func Start(cols, rows, pixelWidth, pixelHeight uint16, customCmd ...string) (*Te
 		return nil, fmt.Errorf("failed to create output pipe: %w", err)
 	}
 
-	// Create ConPTY
 	coord := windows.Coord{
 		X: int16(cols),
 		Y: int16(rows),
@@ -58,11 +56,9 @@ func Start(cols, rows, pixelWidth, pixelHeight uint16, customCmd ...string) (*Te
 		return nil, fmt.Errorf("failed to create pseudo console: %w", err)
 	}
 
-	// In/Out handles given to pseudo console can be closed once ConPTY has them
 	windows.CloseHandle(inRead)
 	windows.CloseHandle(outWrite)
 
-	// Prepare process attribute list with PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE
 	attrList, err := windows.NewProcThreadAttributeList(1)
 	if err != nil {
 		windows.ClosePseudoConsole(hPC)
@@ -187,17 +183,10 @@ func (p *TerminalPTY) Wait() (*os.ProcessState, error) {
 	return nil, nil
 }
 
-// IsEcho returns true on Windows as a safe default
-func (p *TerminalPTY) IsEcho() bool {
-	return true
-}
-
-// IsForegroundShell returns true on Windows as a safe default
 func (p *TerminalPTY) IsForegroundShell() bool {
 	return true
 }
 
-// GetCwd returns current directory on Windows
 func (p *TerminalPTY) GetCwd() string {
 	wd, err := os.Getwd()
 	if err != nil {
@@ -206,6 +195,5 @@ func (p *TerminalPTY) GetCwd() string {
 	return wd
 }
 
-// Make sure TerminalPTY implements io.ReadWriteCloser
 var _ io.ReadWriteCloser = (*TerminalPTY)(nil)
 

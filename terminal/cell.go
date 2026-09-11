@@ -16,7 +16,3 @@ func EmptyCell() Cell {
 		BG:   ColorDefaultBG,
 	}
 }
-
-func (c Cell) IsEmpty() bool {
-	return (c.Char == 0 || c.Char == ' ') && (c.BG == ColorDefaultBG || c.BG == 0)
-}

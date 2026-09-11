@@ -97,7 +97,6 @@ func (t *Terminal) StartSelection(x, y int) {
 		OrigStartX: x,
 		OrigStartY: y,
 	}
-	t.dirtyAll = true
 }
 
 func (t *Terminal) UpdateSelection(x, y int) {
@@ -152,8 +151,6 @@ func (t *Terminal) UpdateSelection(x, y int) {
 		t.sel.EndX = x
 		t.sel.EndY = y
 	}
-
-	t.dirtyAll = true
 }
 
 func (t *Terminal) SelectWord(x, y int) {
@@ -175,7 +172,6 @@ func (t *Terminal) SelectWord(x, y int) {
 		OrigStartX: x,
 		OrigStartY: y,
 	}
-	t.dirtyAll = true
 }
 
 func (t *Terminal) SelectLine(y int) {
@@ -196,7 +192,6 @@ func (t *Terminal) SelectLine(y int) {
 		OrigStartX: 0,
 		OrigStartY: y,
 	}
-	t.dirtyAll = true
 }
 
 func (t *Terminal) findWordBounds(x, y int) (int, int) {
@@ -253,7 +248,6 @@ func (t *Terminal) SelectAll() {
 		OrigStartX: 0,
 		OrigStartY: 0,
 	}
-	t.dirtyAll = true
 }
 
 func (t *Terminal) ClearSelection() {
@@ -262,7 +256,6 @@ func (t *Terminal) ClearSelection() {
 
 	if t.sel.Active {
 		t.sel.Active = false
-		t.dirtyAll = true
 	}
 }
 
@@ -285,7 +278,6 @@ func (t *Terminal) IsSelectedLocked(x, y int) bool {
 func (t *Terminal) getAllTextLocked() string {
 	var sb strings.Builder
 
-	// 1. All scrollback lines (if not in alt screen)
 	if !t.isAlt {
 		for _, row := range t.scrollback {
 			var lineRunes []rune
@@ -302,7 +294,6 @@ func (t *Terminal) getAllTextLocked() string {
 		}
 	}
 
-	// 2. Active grid lines up to the last row containing visible text
 	grid := t.activeGrid()
 	lastRowWithContent := -1
 	for r := len(grid) - 1; r >= 0; r-- {
@@ -344,7 +335,6 @@ func (t *Terminal) getAllTextLocked() string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-// GetAllText returns all text from scrollback history and active grid, trimmed of trailing spaces and trailing empty lines.
 func (t *Terminal) GetAllText() string {
 	t.mu.RLock()
 	defer t.mu.RUnlock()

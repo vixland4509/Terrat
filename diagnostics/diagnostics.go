@@ -8,7 +8,6 @@ import (
 	"sync"
 )
 
-// IssueSeverity indicates the level of the diagnosed issue
 type IssueSeverity int
 
 const (
@@ -25,10 +24,8 @@ type Diagnostic struct {
 	QuickFix   string
 }
 
-// Thread-safe cache for system binary lookup
 var pathCache sync.Map
 
-// isCommandOnPath checks if a command exists in the user's PATH
 func isCommandOnPath(name string) bool {
 	if len(name) < 2 || len(name) > 40 {
 		return false
@@ -47,7 +44,6 @@ func isCommandOnPath(name string) bool {
 	return exists
 }
 
-// Shell built-ins and keywords that don't need PATH resolution
 var shellBuiltins = map[string]bool{
 	"alias": true, "bg": true, "bind": true, "break": true, "builtin": true,
 	"case": true, "cd": true, "command": true, "continue": true, "declare": true,
@@ -65,7 +61,6 @@ var shellBuiltins = map[string]bool{
 	"in": true, "esac": true, "select": true, "function": true, "time": true,
 }
 
-// Known common Linux commands for typo detection fallback
 var commonBaseCommands = []string{
 	"cat", "cd", "cp", "curl", "chmod", "chown", "clear",
 	"df", "diff", "docker", "du",
@@ -89,7 +84,6 @@ var commonBaseCommands = []string{
 	"yarn",
 }
 
-// High-confidence common typos map
 var commonTypos = map[string]string{
 	"sl":     "ls",
 	"gti":    "git",
@@ -113,7 +107,6 @@ var commonTypos = map[string]string{
 	"sduo":   "sudo",
 }
 
-// Known git subcommands (comprehensive official list)
 var gitSubcommands = []string{
 	"add", "am", "annotate", "apply", "archive", "bisect", "blame", "branch", "bundle",
 	"checkout", "cherry", "cherry-pick", "clean", "clone", "commit", "config",
@@ -124,7 +117,6 @@ var gitSubcommands = []string{
 	"version", "whatchanged", "worktree",
 }
 
-// Known docker subcommands
 var dockerSubcommands = []string{
 	"attach", "build", "builder", "checkpoint", "commit", "compose", "config",
 	"container", "context", "cp", "create", "diff", "events", "exec", "export",
@@ -136,7 +128,6 @@ var dockerSubcommands = []string{
 	"version", "volume", "wait",
 }
 
-// Known systemctl subcommands
 var systemctlSubcommands = []string{
 	"cat", "clean", "daemon-reexec", "daemon-reload", "default", "disable",
 	"edit", "emergency", "enable", "exit", "halt", "help", "hibernate",
@@ -148,27 +139,23 @@ var systemctlSubcommands = []string{
 	"try-restart", "unmask",
 }
 
-// Known go subcommands
 var goSubcommands = []string{
 	"build", "clean", "doc", "env", "fix", "fmt", "generate", "get", "install",
 	"list", "mod", "work", "run", "test", "tool", "version", "vet",
 }
 
-// Known cargo subcommands
 var cargoSubcommands = []string{
 	"build", "check", "clean", "doc", "new", "init", "run", "test", "bench",
 	"update", "search", "publish", "install", "uninstall", "add", "remove",
 	"metadata", "clippy", "fmt", "version",
 }
 
-// Known npm subcommands
 var npmSubcommands = []string{
 	"install", "i", "ci", "test", "run", "start", "build", "init", "publish",
 	"audit", "cache", "config", "outdated", "update", "uninstall", "link",
 	"list", "pack", "version", "view", "exec",
 }
 
-// Commands that almost always require superuser privileges
 var privilegedCommands = map[string]string{
 	"apt":        "sudo apt",
 	"apt-get":    "sudo apt-get",
@@ -187,7 +174,6 @@ var privilegedCommands = map[string]string{
 	"ufw":        "sudo ufw",
 }
 
-// Read-only operations for privileged commands that DO NOT need root/sudo
 var safeReadOperations = map[string][]string{
 	"apt":      {"search", "show", "list", "depends", "rdepends", "policy", "help", "--help", "-h", "--version", "-v"},
 	"apt-get":  {"help", "--help", "-h", "--version", "-v", "source"},
@@ -199,7 +185,6 @@ var safeReadOperations = map[string][]string{
 	"iptables": {"-l", "-s", "-v", "--list", "-n", "--version"},
 }
 
-// LevenshteinDistance computes edit distance between two strings
 func LevenshteinDistance(s, t string) int {
 	d := make([][]int, len(s)+1)
 	for i := range d {
@@ -216,29 +201,15 @@ func LevenshteinDistance(s, t string) int {
 				cost = 1
 			}
 			d[i][j] = min(
-				d[i-1][j]+1,      // deletion
-				d[i][j-1]+1,      // insertion
-				d[i-1][j-1]+cost, // substitution
+				d[i-1][j]+1,
+				d[i][j-1]+1,
+				d[i-1][j-1]+cost,
 			)
 		}
 	}
 	return d[len(s)][len(t)]
 }
 
-func min(a, b, c int) int {
-	if a < b {
-		if a < c {
-			return a
-		}
-		return c
-	}
-	if b < c {
-		return b
-	}
-	return c
-}
-
-// FindClosestMatch finds the closest command from list within a threshold
 func FindClosestMatch(word string, candidates []string, maxDist int) string {
 	lowerWord := strings.ToLower(word)
 	bestDist := maxDist + 1
@@ -246,7 +217,7 @@ func FindClosestMatch(word string, candidates []string, maxDist int) string {
 
 	for _, cand := range candidates {
 		if strings.EqualFold(cand, word) {
-			return "" // exact match, not a typo
+			return ""
 		}
 		dist := LevenshteinDistance(lowerWord, strings.ToLower(cand))
 		if dist <= maxDist && dist < bestDist {
@@ -257,7 +228,6 @@ func FindClosestMatch(word string, candidates []string, maxDist int) string {
 	return bestMatch
 }
 
-// isSafeOperation checks if the given arguments represent a read-only subcommand/flag
 func isSafeOperation(cmd string, parts []string) bool {
 	safeOps, ok := safeReadOperations[cmd]
 	if !ok {
@@ -275,8 +245,6 @@ func isSafeOperation(cmd string, parts []string) bool {
 	return false
 }
 
-// splitCommandPrefix splits input into (prefix, activeSegment).
-// prefix preserves all preceding pipeline/chain commands, delimiters (&&, ||, ;, |), and spacing.
 func splitCommandPrefix(input string) (prefix string, activeSeg string) {
 	delims := []string{"&&", "||", ";", "|"}
 	lastIdx := -1
@@ -302,13 +270,6 @@ func splitCommandPrefix(input string) (prefix string, activeSeg string) {
 	return input[:len(input)-len(trimmed)], strings.TrimSpace(trimmed)
 }
 
-// extractActiveSegment extracts the currently active command segment from pipelines or chains (&&, ||, ;, |)
-func extractActiveSegment(input string) string {
-	_, seg := splitCommandPrefix(input)
-	return seg
-}
-
-// tokenizeCommand splits a command string into tokens respecting quotes and backslash escapes
 func tokenizeCommand(seg string) []string {
 	var tokens []string
 	var cur strings.Builder
@@ -350,7 +311,6 @@ func tokenizeCommand(seg string) []string {
 	return tokens
 }
 
-// unnestSudo removes sudo and common sudo flags, returning the underlying command
 func unnestSudo(parts []string) (cleanedParts []string, hasSudo bool) {
 	if len(parts) == 0 || parts[0] != "sudo" {
 		return parts, false
@@ -359,7 +319,6 @@ func unnestSudo(parts []string) (cleanedParts []string, hasSudo bool) {
 	for i < len(parts) {
 		arg := parts[i]
 		if strings.HasPrefix(arg, "-") {
-			// Flags with arguments like -u user
 			if (arg == "-u" || arg == "-g" || arg == "-p" || arg == "-c") && i+1 < len(parts) {
 				i += 2
 				continue
@@ -375,14 +334,12 @@ func unnestSudo(parts []string) (cleanedParts []string, hasSudo bool) {
 	return nil, true
 }
 
-// Analyze inspects the user input command and returns any diagnosed issues
 func Analyze(rawInput string) *Diagnostic {
 	trimmed := strings.TrimSpace(rawInput)
 	if len(trimmed) < 2 {
 		return nil
 	}
 
-	// 1. Syntax Check: Unclosed quotes
 	singleQuoteCount := 0
 	doubleQuoteCount := 0
 	for _, r := range rawInput {
@@ -409,7 +366,6 @@ func Analyze(rawInput string) *Diagnostic {
 		}
 	}
 
-	// Get active segment in case of pipe or chained command
 	prefix, activeSeg := splitCommandPrefix(trimmed)
 	if len(activeSeg) < 2 {
 		return nil
@@ -420,7 +376,6 @@ func Analyze(rawInput string) *Diagnostic {
 		return nil
 	}
 
-	// Handle sudo unnesting
 	cmdParts, hasSudo := unnestSudo(parts)
 	if len(cmdParts) == 0 {
 		return nil
@@ -428,11 +383,8 @@ func Analyze(rawInput string) *Diagnostic {
 
 	baseCmd := cmdParts[0]
 
-	// 2. Privileged Command Check (e.g. apt install without sudo)
-	// Skip if running as root or already wrapped in sudo
 	if !hasSudo && os.Geteuid() != 0 {
 		if fix, ok := privilegedCommands[baseCmd]; ok {
-			// Don't warn for read-only operations like apt search, pacman -Ss, ufw status
 			if !isSafeOperation(baseCmd, cmdParts) {
 				fixedLine := fix + strings.TrimPrefix(activeSeg, baseCmd)
 				return &Diagnostic{
@@ -445,10 +397,8 @@ func Analyze(rawInput string) *Diagnostic {
 		}
 	}
 
-	// 3. Subcommand Typo Check: git / docker / systemctl / go / cargo / npm
 	if len(cmdParts) >= 2 {
 		sub := cmdParts[1]
-		// Skip flags (-f, --help)
 		if !strings.HasPrefix(sub, "-") {
 			var subCandidates []string
 			switch baseCmd {
@@ -459,7 +409,8 @@ func Analyze(rawInput string) *Diagnostic {
 			case "systemctl":
 				subCandidates = systemctlSubcommands
 			case "go":
-				subCandidates = goSubcommands
+				subCommands := goSubcommands
+				subCandidates = subCommands
 			case "cargo":
 				subCandidates = cargoSubcommands
 			case "npm":
@@ -476,13 +427,10 @@ func Analyze(rawInput string) *Diagnostic {
 				}
 
 				if !isKnown {
-					// Check if it's a known git alias (e.g. git deploy, git st, git co)
 					if baseCmd == "git" && IsGitAlias(sub) {
 						return nil
 					}
 
-					// For short subcommands (<= 3 chars like git co, git st, git br), don't flag as error
-					// unless it's a known typo like "puch"
 					if len(sub) > 3 || sub == "puch" || sub == "stat" || sub == "pul" || sub == "comit" {
 						maxD := 1
 						if len(sub) >= 6 {
@@ -503,40 +451,31 @@ func Analyze(rawInput string) *Diagnostic {
 		}
 	}
 
-	// 4. Base Command Validation & Typo Detection
-	// Skip comments
 	if strings.HasPrefix(baseCmd, "#") {
 		return nil
 	}
 
-	// Skip paths (./script, /usr/bin/foo, ~/bin/bar)
 	if strings.Contains(baseCmd, "/") || strings.HasPrefix(baseCmd, ".") || strings.HasPrefix(baseCmd, "~") {
 		return nil
 	}
 
-	// Skip environment variable assignments (KEY=val cmd)
 	if strings.Contains(baseCmd, "=") {
 		return nil
 	}
 
-	// A. Check if it's a shell builtin
 	if shellBuiltins[baseCmd] {
-		return nil // valid builtin, no error
+		return nil
 	}
 
-	// B. Check if it's a known user shell alias (e.g. ll, la, cls, gs, gp, alert)
 	if IsAlias(baseCmd) {
-		return nil // valid alias, NEVER error!
+		return nil
 	}
 
-	// C. Check if it exists on the system ($PATH)
 	if isCommandOnPath(baseCmd) {
-		return nil // valid installed executable, NEVER error!
+		return nil
 	}
 
-	// D. High-confidence direct typo map check
 	if fix, ok := commonTypos[baseCmd]; ok {
-		// Only suggest if the target exists, is a builtin, or is an alias
 		if isCommandOnPath(fix) || shellBuiltins[fix] || IsAlias(fix) {
 			fixedLine := fix + strings.TrimPrefix(activeSeg, baseCmd)
 			return &Diagnostic{
@@ -548,14 +487,12 @@ func Analyze(rawInput string) *Diagnostic {
 		}
 	}
 
-	// E. Typo matching against common base commands
 	if len(baseCmd) >= 2 && len(baseCmd) <= 15 {
 		maxD := 1
 		if len(baseCmd) >= 5 {
 			maxD = 2
 		}
 		if match := FindClosestMatch(baseCmd, commonBaseCommands, maxD); match != "" {
-			// Ensure the suggested match actually exists or is a builtin
 			if isCommandOnPath(match) || shellBuiltins[match] || IsAlias(match) {
 				fixedLine := match + strings.TrimPrefix(activeSeg, baseCmd)
 				return &Diagnostic{

@@ -26,7 +26,6 @@ func TestSanitizeCRLF(t *testing.T) {
 }
 
 func TestSanitizeANSIEscapeSequences(t *testing.T) {
-	// Pastejacking attempt: visually hiding commands using cursor movement / erase sequences
 	malicious := "git clone https://example.com\x1b[2K\rrm -rf /\n"
 	res := Sanitize(malicious)
 
@@ -39,7 +38,6 @@ func TestSanitizeANSIEscapeSequences(t *testing.T) {
 }
 
 func TestSanitizeInvisibleUnicode(t *testing.T) {
-	// Trojan source / zero-width space attack: s[ZWSP]udo
 	malicious := "s\u200Budo rm -rf /\u202Ereversed"
 	res := Sanitize(malicious)
 
@@ -52,7 +50,6 @@ func TestSanitizeInvisibleUnicode(t *testing.T) {
 }
 
 func TestSanitizeControlCharacters(t *testing.T) {
-	// NUL and BEL and BS characters
 	raw := "echo \x00hello\x07 \x08world"
 	res := Sanitize(raw)
 	expected := "echo hello world"
@@ -78,7 +75,6 @@ func TestFlattenToSingleLine(t *testing.T) {
 		t.Fatalf("expected %q, got %q", expected, flat)
 	}
 
-	// Line ending with backslash
 	multilineWithSlash := "git commit \\\n  -m \"initial commit\""
 	flatSlash := FlattenToSingleLine(multilineWithSlash)
 	expectedSlash := "git commit \\ -m \"initial commit\""
@@ -102,7 +98,6 @@ func TestURLDetectionAndQuoting(t *testing.T) {
 		t.Fatalf("expected %q, got %q", expected, quoted)
 	}
 
-	// Non-URL
 	if IsURL("curl -v https://example.com") {
 		t.Fatalf("expected IsURL to be false for multi-word command")
 	}

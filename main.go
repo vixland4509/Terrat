@@ -263,7 +263,6 @@ func main() {
 		if updateDiagnostics != nil {
 			updateDiagnostics()
 		}
-		tabs[activeTabIdx].Term.MarkAllDirty()
 		triggerRedraw()
 	}
 
@@ -279,32 +278,14 @@ func main() {
 			os.Exit(0)
 		}
 
-		if activeTabIdx >= len(tabs) {
-			activeTabIdx = len(tabs) - 1
-		} else if idx < activeTabIdx {
-			activeTabIdx--
+		targetIdx := activeTabIdx
+		if targetIdx >= len(tabs) {
+			targetIdx = len(tabs) - 1
+		} else if idx < targetIdx {
+			targetIdx--
 		}
 
-		isSelecting = false
-		isDraggingScrollbar = false
-		dragScrollDelta = 0
-
-		tabs[activeTabIdx].HasBell = false
-		title := tabs[activeTabIdx].Title
-		if title == "" {
-			title = "bash"
-		}
-		win.SetTitle(AppName + " - " + title)
-		currentInputBuffer = ""
-		activeDiag = nil
-		if updateGhostText != nil {
-			updateGhostText()
-		}
-		if updateDiagnostics != nil {
-			updateDiagnostics()
-		}
-		tabs[activeTabIdx].Term.MarkAllDirty()
-		triggerRedraw()
+		switchTab(targetIdx)
 	}
 
 	xEventCh := win.Events()
@@ -336,6 +317,42 @@ func main() {
 	pendingPasteIsLarge := false
 
 	var hoveredURL *render.URLRange
+
+	updateScrollbar := func(eventY int) {
+		activeTerm := tabs[activeTabIdx].Term
+		maxScroll := activeTerm.ScrollbackLen()
+		if maxScroll <= 0 {
+			return
+		}
+		trackY := render.HeaderHeight + 4
+		trackH := int(currentHeight) - render.HeaderHeight - 8
+		if trackH <= 24 {
+			return
+		}
+		totalLines := maxScroll + canvas.Rows()
+		thumbH := (canvas.Rows() * trackH) / totalLines
+		if thumbH < 20 {
+			thumbH = 20
+		}
+		if thumbH > trackH {
+			thumbH = trackH
+		}
+		availH := trackH - thumbH
+		if availH <= 0 {
+			return
+		}
+		clickY := eventY - trackY - (thumbH / 2)
+		if clickY < 0 {
+			clickY = 0
+		}
+		if clickY > availH {
+			clickY = availH
+		}
+		progress := float64(clickY) / float64(availH)
+		targetOff := int(float64(maxScroll)*(1.0-progress) + 0.5)
+		activeTerm.SetScrollOff(targetOff)
+		triggerRedraw()
+	}
 
 	isPasswordPrompt := func(term *terminal.Terminal) bool {
 		if term == nil {
@@ -453,7 +470,6 @@ func main() {
 		for _, t := range tabs {
 			t.Term.Resize(newCols, newRows)
 			_ = t.PTY.Resize(uint16(newCols), uint16(newRows), currentWidth, currentHeight)
-			t.Term.MarkAllDirty()
 		}
 
 		currentCols = newCols
@@ -583,7 +599,6 @@ func main() {
 			activeTheme = terminal.ResolveTheme(savedThemeID, systemIsDark)
 			for _, t := range tabs {
 				t.Term.SetTheme(activeTheme)
-				t.Term.MarkAllDirty()
 			}
 		case "font_size":
 			if isSecondaryAction {
@@ -657,7 +672,6 @@ func main() {
 
 		activeTerm := tabs[activeTabIdx].Term
 
-		// In alternate screen mode (e.g. vim, nano, htop, less), don't disrupt full-screen apps
 		if activeTerm.IsAlt() {
 			doWritePastedText(text)
 			return
@@ -916,35 +930,7 @@ func main() {
 			}
 
 			if isDraggingScrollbar {
-				maxScroll := activeTerm.ScrollbackLen()
-				if maxScroll > 0 {
-					trackY := render.HeaderHeight + 4
-					trackH := int(currentHeight) - render.HeaderHeight - 8
-					if trackH > 24 {
-						totalLines := maxScroll + canvas.Rows()
-						thumbH := (canvas.Rows() * trackH) / totalLines
-						if thumbH < 20 {
-							thumbH = 20
-						}
-						if thumbH > trackH {
-							thumbH = trackH
-						}
-						availH := trackH - thumbH
-						if availH > 0 {
-							clickY := int(e.EventY) - trackY - (thumbH / 2)
-							if clickY < 0 {
-								clickY = 0
-							}
-							if clickY > availH {
-								clickY = availH
-							}
-							progress := float64(clickY) / float64(availH)
-							targetOff := int(float64(maxScroll)*(1.0-progress) + 0.5)
-							activeTerm.SetScrollOff(targetOff)
-							triggerRedraw()
-						}
-					}
-				}
+				updateScrollbar(int(e.EventY))
 				continue
 			}
 
@@ -1129,7 +1115,6 @@ func main() {
 				}
 
 				if int(e.EventY) < render.HeaderHeight {
-					// Top-right window controls: Settings, Minimize, Maximize, Close
 					if int(e.EventX) >= int(currentWidth)-36 {
 						for _, t := range tabs {
 							t.Close()
@@ -1144,7 +1129,6 @@ func main() {
 					} else if int(e.EventX) >= int(currentWidth)-144 && int(e.EventX) < int(currentWidth)-108 {
 						isPrefOpen = !isPrefOpen
 						prefIndex = 0
-						activeTerm.MarkAllDirty()
 						triggerRedraw()
 						continue
 					}
@@ -1158,7 +1142,6 @@ func main() {
 						continue
 					}
 
-					// Double-click on header (outside close/new buttons) toggles maximize
 					isTabCloseBtn := false
 					for _, thb := range canvas.TabHitBoxes {
 						if int(e.EventX) >= thb.CloseX && int(e.EventX) <= thb.CloseEndX {
@@ -1221,35 +1204,9 @@ func main() {
 				}
 
 				if int(e.EventX) >= int(currentWidth)-16 && int(e.EventY) >= render.HeaderHeight {
-					maxScroll := activeTerm.ScrollbackLen()
-					if maxScroll > 0 {
+					if activeTerm.ScrollbackLen() > 0 {
 						isDraggingScrollbar = true
-						trackY := render.HeaderHeight + 4
-						trackH := int(currentHeight) - render.HeaderHeight - 8
-						if trackH > 24 {
-							totalLines := maxScroll + canvas.Rows()
-							thumbH := (canvas.Rows() * trackH) / totalLines
-							if thumbH < 20 {
-								thumbH = 20
-							}
-							if thumbH > trackH {
-								thumbH = trackH
-							}
-							availH := trackH - thumbH
-							if availH > 0 {
-								clickY := int(e.EventY) - trackY - (thumbH / 2)
-								if clickY < 0 {
-									clickY = 0
-								}
-								if clickY > availH {
-									clickY = availH
-								}
-								progress := float64(clickY) / float64(availH)
-								targetOff := int(float64(maxScroll)*(1.0-progress) + 0.5)
-								activeTerm.SetScrollOff(targetOff)
-								triggerRedraw()
-							}
-						}
+						updateScrollbar(int(e.EventY))
 						continue
 					}
 				}
@@ -1397,17 +1354,17 @@ func main() {
 
 			if activeTerm.AppCursorLocked() && (e.State&(platform.ModCtrl|platform.ModAlt|platform.ModShift)) == 0 {
 				switch keysym {
-				case 0xff52: // Up
+				case 0xff52:
 					data = "\x1bOA"
-				case 0xff54: // Down
+				case 0xff54:
 					data = "\x1bOB"
-				case 0xff53: // Right
+				case 0xff53:
 					data = "\x1bOC"
-				case 0xff51: // Left
+				case 0xff51:
 					data = "\x1bOD"
-				case 0xff50: // Home
+				case 0xff50:
 					data = "\x1bOH"
-				case 0xff57: // End
+				case 0xff57:
 					data = "\x1bOF"
 				}
 			}
@@ -1423,24 +1380,24 @@ func main() {
 
 			if isPasteModalOpen {
 				switch keysym {
-				case 0xff1b, 'c', 'C', 'n', 'N': // Escape, 'c', 'n' -> Cancel
+				case 0xff1b, 'c', 'C', 'n', 'N':
 					isPasteModalOpen = false
 					pendingPasteText = ""
 					pendingPasteWarnings = nil
 					triggerRedraw()
-				case 0xff0d, 'p', 'P', 'y', 'Y': // Enter, 'p', 'y' -> Paste as-is
+				case 0xff0d, 'p', 'P', 'y', 'Y':
 					textToPaste := pendingPasteText
 					isPasteModalOpen = false
 					pendingPasteText = ""
 					pendingPasteWarnings = nil
 					doWritePastedText(textToPaste)
-				case 's', 'S': // 's' -> Flatten to single line
+				case 's', 'S':
 					textToPaste := paste.FlattenToSingleLine(pendingPasteText)
 					isPasteModalOpen = false
 					pendingPasteText = ""
 					pendingPasteWarnings = nil
 					doWritePastedText(textToPaste)
-				case 'q', 'Q': // 'q' -> Quote URL / argument
+				case 'q', 'Q':
 					textToPaste := paste.QuoteURL(pendingPasteText)
 					isPasteModalOpen = false
 					pendingPasteText = ""
@@ -1453,33 +1410,33 @@ func main() {
 			if isPrefOpen {
 				items := getSettingsItems()
 				switch keysym {
-				case 0xff52, 'k', 'K': // Up
+				case 0xff52, 'k', 'K':
 					if prefIndex > 0 {
 						prefIndex--
 					} else {
 						prefIndex = len(items) - 1
 					}
 					triggerRedraw()
-				case 0xff54, 'j', 'J': // Down
+				case 0xff54, 'j', 'J':
 					if prefIndex < len(items)-1 {
 						prefIndex++
 					} else {
 						prefIndex = 0
 					}
 					triggerRedraw()
-				case 0xff51, 'h', 'H', '-': // Left / Minus (secondary action / decrease / cycle back)
+				case 0xff51, 'h', 'H', '-':
 					if prefIndex >= 0 && prefIndex < len(items) {
 						executeSettingsAction(items[prefIndex], true)
 					}
-				case 0xff53, 'l', 'L', '+', '=': // Right / Plus (primary action / increase / cycle forward)
+				case 0xff53, 'l', 'L', '+', '=':
 					if prefIndex >= 0 && prefIndex < len(items) {
 						executeSettingsAction(items[prefIndex], false)
 					}
-				case 0xff0d, ' ': // Enter / Space (toggle / activate)
+				case 0xff0d, ' ':
 					if prefIndex >= 0 && prefIndex < len(items) {
 						executeSettingsAction(items[prefIndex], false)
 					}
-				case 0xff1b, 'q', 'Q': // Escape / 'q' (close modal)
+				case 0xff1b, 'q', 'Q':
 					isPrefOpen = false
 					triggerRedraw()
 				case '1', '2', '3', '4', '5', '6', '7', '8':
@@ -1553,7 +1510,6 @@ func main() {
 					continue
 				}
 
-				// Shortcut to toggle Live Diagnostics on/off: Ctrl + Shift + D
 				if action == platform.ActionToggleDiagnostics {
 					appConfig.Diagnostics = !appConfig.Diagnostics
 					_ = config.Save(appConfig)
@@ -1645,11 +1601,9 @@ func main() {
 					} else if len(data) == 1 && data[0] == 0x16 && !activeTerm.IsAlt() {
 						win.Paste()
 					} else {
-						// Ghost text completion: when Right Arrow (0xff53) or Tab (0xff09) is pressed with an active suggestion
 						if activeGhostText != "" && !activeTerm.IsAlt() {
 							isAcceptKey := (keysym == 0xff53) || (keysym == 0xff09 && (e.State&platform.ModShift) == 0)
 							if isAcceptKey {
-								// If user typed unescaped space (e.g. "cd my "), replace it with escaped space
 								if len(currentInputBuffer) > 0 && currentInputBuffer[len(currentInputBuffer)-1] == ' ' && !strings.HasSuffix(currentInputBuffer, "\\ ") {
 									_, _ = activePTY.Write([]byte{0x08, '\\', ' '})
 									currentInputBuffer = currentInputBuffer[:len(currentInputBuffer)-1] + "\\ "
@@ -1665,9 +1619,7 @@ func main() {
 							}
 						}
 
-						// Track input buffer for ghost text matching and live diagnostics
 						if !activeTerm.IsAlt() {
-							// If a foreground command is executing or password is being read, suppress suggestions/diagnostics and do not record keys
 							if !activePTY.IsForegroundShell() || isPasswordPrompt(activeTerm) {
 								currentInputBuffer = ""
 								activeGhostText = ""
@@ -1675,10 +1627,8 @@ func main() {
 							} else {
 								isAlt := (e.State & platform.ModAlt) != 0
 								if isAlt && (keysym == 0xff0d || keysym == 0xff8d) && activeDiag != nil {
-									// Alt+Enter applies quickfix if available!
 									diag := diagnostics.Analyze(strings.TrimSpace(currentInputBuffer))
 									if diag != nil && diag.QuickFix != "" {
-										// Erase current line in terminal: send Ctrl+U (\x15), then type quickfix
 										_, _ = activePTY.Write([]byte{0x15})
 										_, _ = activePTY.Write([]byte(diag.QuickFix))
 										currentInputBuffer = diag.QuickFix
@@ -1691,7 +1641,7 @@ func main() {
 									}
 								}
 
-								if keysym == 0xff0d || keysym == 0xff8d { // Enter
+								if keysym == 0xff0d || keysym == 0xff8d {
 									trimmedCmd := strings.TrimSpace(currentInputBuffer)
 									if len(trimmedCmd) >= 2 {
 										suggestEngine.Add(trimmedCmd)
@@ -1702,17 +1652,17 @@ func main() {
 									currentInputBuffer = ""
 									activeGhostText = ""
 									activeDiag = nil
-								} else if keysym == 0xff08 { // Backspace
+								} else if keysym == 0xff08 {
 									if len(currentInputBuffer) > 0 {
 										currentInputBuffer = currentInputBuffer[:len(currentInputBuffer)-1]
 										updateGhostText()
 										updateDiagnostics()
 									}
-								} else if keysym == 0xff1b || (len(data) == 1 && (data[0] == 0x03 || data[0] == 0x15)) { // Escape, Ctrl+C, Ctrl+U
+								} else if keysym == 0xff1b || (len(data) == 1 && (data[0] == 0x03 || data[0] == 0x15)) {
 									currentInputBuffer = ""
 									activeGhostText = ""
 									activeDiag = nil
-								} else if len(data) > 0 && data[0] >= 32 && data[0] != 127 { // Normal printable characters (ASCII or UTF-8)
+								} else if len(data) > 0 && data[0] >= 32 && data[0] != 127 {
 									currentInputBuffer += data
 									updateGhostText()
 									updateDiagnostics()
@@ -1767,7 +1717,6 @@ func main() {
 					for _, t := range tabs {
 						t.Term.Resize(newCols, newRows)
 						_ = t.PTY.Resize(uint16(newCols), uint16(newRows), currentWidth, currentHeight)
-						t.Term.MarkAllDirty()
 					}
 				}
 
@@ -1775,12 +1724,10 @@ func main() {
 					updateSearchMatches()
 				}
 
-				activeTerm.MarkAllDirty()
 				renderScreen()
 			}
 
 		case platform.ExposeEvent:
-			activeTerm.MarkAllDirty()
 			renderScreen()
 
 		case platform.MappingNotifyEvent:

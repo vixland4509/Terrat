@@ -97,19 +97,6 @@ func (p *TerminalPTY) Wait() (*os.ProcessState, error) {
 	return p.cmd.ProcessState, p.cmd.Wait()
 }
 
-// IsEcho returns true if the terminal has ECHO enabled (i.e. not reading a password)
-func (p *TerminalPTY) IsEcho() bool {
-	if p == nil || p.file == nil {
-		return true
-	}
-	t, err := unix.IoctlGetTermios(int(p.file.Fd()), unix.TCGETS)
-	if err != nil {
-		return true
-	}
-	return (t.Lflag & unix.ECHO) != 0
-}
-
-// IsForegroundShell returns true if the root shell process is the foreground process on the terminal
 func (p *TerminalPTY) IsForegroundShell() bool {
 	if p == nil || p.file == nil || p.cmd == nil || p.cmd.Process == nil {
 		return true
@@ -125,7 +112,6 @@ func (p *TerminalPTY) IsForegroundShell() bool {
 	return pgrp == shellPgid
 }
 
-// GetCwd returns the current working directory of the shell session
 func (p *TerminalPTY) GetCwd() string {
 	if p == nil || p.cmd == nil || p.cmd.Process == nil {
 		return ""

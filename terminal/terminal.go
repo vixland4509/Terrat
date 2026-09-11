@@ -69,9 +69,6 @@ type Terminal struct {
 	TitleChan    chan string
 	ResponseChan chan []byte
 
-	dirtyRows []bool
-	dirtyAll  bool
-
 	sel Selection
 
 	theme *Theme
@@ -93,8 +90,6 @@ func New(cols, rows int) *Terminal {
 		scrollBottom:  rows - 1,
 		TitleChan:     make(chan string, 16),
 		ResponseChan:  make(chan []byte, 16),
-		dirtyRows:     make([]bool, rows),
-		dirtyAll:      true,
 	}
 
 	t.lines = make([][]Cell, rows)
@@ -102,7 +97,6 @@ func New(cols, rows int) *Terminal {
 	for i := 0; i < rows; i++ {
 		t.lines[i] = t.makeRow()
 		t.altLines[i] = t.makeRow()
-		t.dirtyRows[i] = true
 	}
 
 	return t
@@ -138,12 +132,6 @@ func (t *Terminal) RUnlock() { t.mu.RUnlock() }
 
 func (t *Terminal) Lock()   { t.mu.Lock() }
 func (t *Terminal) Unlock() { t.mu.Unlock() }
-
-func (t *Terminal) Size() (int, int) {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.cols, t.rows
-}
 
 func (t *Terminal) Cursor() (int, int, bool) {
 	t.mu.RLock()
@@ -202,24 +190,8 @@ func (t *Terminal) BracketedPaste() bool {
 	return t.bracketedPaste
 }
 
-func (t *Terminal) BracketedPasteLocked() bool {
-	return t.bracketedPaste
-}
-
-func (t *Terminal) AppCursor() bool {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.appCursor
-}
-
 func (t *Terminal) AppCursorLocked() bool {
 	return t.appCursor
-}
-
-func (t *Terminal) MouseTracking() bool {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.mouseTracking
 }
 
 func (t *Terminal) MouseTrackingLocked() bool {
@@ -250,13 +222,6 @@ func (t *Terminal) ScrollbackLenLocked() int {
 	return len(t.scrollback)
 }
 
-
-func (t *Terminal) Cols() int {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.cols
-}
-
 func (t *Terminal) Rows() int {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
@@ -281,31 +246,6 @@ func (t *Terminal) GetRowString(y int) string {
 		runes[x] = r
 	}
 	return string(runes)
-}
-
-func (t *Terminal) IsRowDirty(y int) bool {
-	if t.dirtyAll {
-		return true
-	}
-	if y >= 0 && y < len(t.dirtyRows) {
-		return t.dirtyRows[y]
-	}
-	return true
-}
-
-func (t *Terminal) ClearDirty() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.dirtyAll = false
-	for i := range t.dirtyRows {
-		t.dirtyRows[i] = false
-	}
-}
-
-func (t *Terminal) MarkAllDirty() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.dirtyAll = true
 }
 
 func (t *Terminal) Theme() *Theme {
@@ -372,8 +312,6 @@ func (t *Terminal) SetTheme(theme *Theme) {
 			remapCell(&t.scrollback[r][c])
 		}
 	}
-
-	t.dirtyAll = true
 }
 
 func (t *Terminal) themeANSI(idx int) Color {
@@ -386,31 +324,11 @@ func (t *Terminal) themeANSI(idx int) Color {
 	return ColorDefaultFG
 }
 
-func (t *Terminal) themeFG() Color {
-	if t.theme != nil {
-		return t.theme.FG
-	}
-	return Color(0xc0caf5)
-}
-
-func (t *Terminal) themeBG() Color {
-	if t.theme != nil {
-		return t.theme.BG
-	}
-	return Color(0x1a1b26)
-}
-
 func (t *Terminal) activeGrid() [][]Cell {
 	if t.isAlt {
 		return t.altLines
 	}
 	return t.lines
-}
-
-func (t *Terminal) markRowDirty(row int) {
-	if row >= 0 && row < len(t.dirtyRows) {
-		t.dirtyRows[row] = true
-	}
 }
 
 func (t *Terminal) Scroll(delta int) {
@@ -431,7 +349,6 @@ func (t *Terminal) Scroll(delta int) {
 	if t.sel.Mode != SelectionModeAll {
 		t.sel.Active = false
 	}
-	t.dirtyAll = true
 }
 
 func (t *Terminal) ScrollKeepSelection(delta int) {
@@ -443,7 +360,6 @@ func (t *Terminal) ScrollKeepSelection(delta int) {
 	}
 
 	if t.sel.Mode == SelectionModeAll {
-		t.dirtyAll = true
 		return
 	}
 
@@ -473,7 +389,6 @@ func (t *Terminal) ScrollKeepSelection(delta int) {
 			t.sel.OrigStartY = 0
 		}
 	}
-	t.dirtyAll = true
 }
 
 func (t *Terminal) SetScrollOff(off int) {
@@ -491,7 +406,6 @@ func (t *Terminal) SetScrollOff(off int) {
 	if t.scrollOff < 0 {
 		t.scrollOff = 0
 	}
-	t.dirtyAll = true
 }
 
 func (t *Terminal) ScrollToTop() {
@@ -506,7 +420,6 @@ func (t *Terminal) ScrollToTop() {
 	if t.sel.Mode != SelectionModeAll {
 		t.sel.Active = false
 	}
-	t.dirtyAll = true
 }
 
 func (t *Terminal) ResetScroll() {
@@ -517,7 +430,6 @@ func (t *Terminal) ResetScroll() {
 		if t.sel.Mode != SelectionModeAll {
 			t.sel.Active = false
 		}
-		t.dirtyAll = true
 	}
 }
 
@@ -534,10 +446,8 @@ func (t *Terminal) Resize(newCols, newRows int) {
 
 	newLines := make([][]Cell, newRows)
 	newAlt := make([][]Cell, newRows)
-	newDirty := make([]bool, newRows)
 
 	for r := 0; r < newRows; r++ {
-		newDirty[r] = true
 		newLines[r] = make([]Cell, newCols)
 		newAlt[r] = make([]Cell, newCols)
 
@@ -560,8 +470,6 @@ func (t *Terminal) Resize(newCols, newRows int) {
 	t.rows = newRows
 	t.lines = newLines
 	t.altLines = newAlt
-	t.dirtyRows = newDirty
-	t.dirtyAll = true
 
 	t.scrollTop = 0
 	t.scrollBottom = newRows - 1
@@ -638,10 +546,8 @@ func (t *Terminal) processRune(r rune) {
 			t.reverseIndex()
 			t.state = stateNormal
 		case '=':
-			// DECKPAM (Application Keypad)
 			t.state = stateNormal
 		case '>':
-			// DECKPNM (Normal Keypad)
 			t.state = stateNormal
 		default:
 			t.state = stateNormal
@@ -693,11 +599,9 @@ func (t *Terminal) processRune(r rune) {
 
 	case stateOSCEscape:
 		if r == '\\' {
-			// Completed String Terminator (ST: ESC \)
 			t.executeOSC()
 			t.state = stateNormal
 		} else {
-			// Not ST, flush OSC and treat r as part of new escape sequence
 			t.executeOSC()
 			t.state = stateEscape
 			t.processRune(r)
@@ -721,7 +625,6 @@ func (t *Terminal) putChar(r rune) {
 			Underline: t.currUnderline,
 			Inverse:   t.currInverse,
 		}
-		t.markRowDirty(t.cursorY)
 	}
 
 	t.cursorX++
@@ -733,7 +636,6 @@ func (t *Terminal) lineFeed() {
 	} else {
 		t.cursorY++
 	}
-	t.markRowDirty(t.cursorY)
 }
 
 func (t *Terminal) scrollUp(count int) {
@@ -754,11 +656,9 @@ func (t *Terminal) scrollUp(count int) {
 
 		for r := t.scrollTop; r < t.scrollBottom; r++ {
 			grid[r] = grid[r+1]
-			t.markRowDirty(r)
 		}
 
 		grid[t.scrollBottom] = t.makeRow()
-		t.markRowDirty(t.scrollBottom)
 	}
 	if t.scrollOff > len(t.scrollback) {
 		t.scrollOff = len(t.scrollback)
@@ -770,13 +670,10 @@ func (t *Terminal) reverseIndex() {
 		grid := t.activeGrid()
 		for r := t.scrollBottom; r > t.scrollTop; r-- {
 			grid[r] = grid[r-1]
-			t.markRowDirty(r)
 		}
 		grid[t.scrollTop] = t.makeRow()
-		t.markRowDirty(t.scrollTop)
 	} else {
 		t.cursorY--
-		t.markRowDirty(t.cursorY)
 	}
 }
 
@@ -810,7 +707,6 @@ func (t *Terminal) restoreCursor() {
 	t.currBold = t.savedBold
 	t.currUnderline = t.savedUnderline
 	t.currInverse = t.savedInverse
-	t.markRowDirty(t.cursorY)
 }
 
 func (t *Terminal) executeCSI(cmd rune) {
@@ -836,7 +732,6 @@ func (t *Terminal) executeCSI(cmd rune) {
 		if t.cursorY < 0 {
 			t.cursorY = 0
 		}
-		t.markRowDirty(t.cursorY)
 
 	case 'B':
 		n := arg(0, 1)
@@ -844,7 +739,6 @@ func (t *Terminal) executeCSI(cmd rune) {
 		if t.cursorY >= t.rows {
 			t.cursorY = t.rows - 1
 		}
-		t.markRowDirty(t.cursorY)
 
 	case 'C':
 		n := arg(0, 1)
@@ -867,7 +761,6 @@ func (t *Terminal) executeCSI(cmd rune) {
 			t.cursorY = t.rows - 1
 		}
 		t.cursorX = 0
-		t.markRowDirty(t.cursorY)
 
 	case 'F':
 		n := arg(0, 1)
@@ -876,7 +769,6 @@ func (t *Terminal) executeCSI(cmd rune) {
 			t.cursorY = 0
 		}
 		t.cursorX = 0
-		t.markRowDirty(t.cursorY)
 
 	case 'G':
 		col := arg(0, 1) - 1
@@ -905,7 +797,6 @@ func (t *Terminal) executeCSI(cmd rune) {
 		}
 		t.cursorX = col
 		t.cursorY = row
-		t.markRowDirty(t.cursorY)
 
 	case 'J':
 		mode := 0
@@ -917,30 +808,23 @@ func (t *Terminal) executeCSI(cmd rune) {
 			for c := t.cursorX; c < t.cols; c++ {
 				grid[t.cursorY][c] = t.emptyCell()
 			}
-			t.markRowDirty(t.cursorY)
 			for r := t.cursorY + 1; r < t.rows; r++ {
 				grid[r] = t.emptyRow()
-				t.markRowDirty(r)
 			}
 		case 1:
 			for r := 0; r < t.cursorY; r++ {
 				grid[r] = t.emptyRow()
-				t.markRowDirty(r)
 			}
 			for c := 0; c <= t.cursorX && c < t.cols; c++ {
 				grid[t.cursorY][c] = t.emptyCell()
 			}
-			t.markRowDirty(t.cursorY)
 		case 2:
 			for r := 0; r < t.rows; r++ {
 				grid[r] = t.emptyRow()
-				t.markRowDirty(r)
 			}
-			t.dirtyAll = true
 		case 3:
 			t.scrollback = nil
 			t.scrollOff = 0
-			t.dirtyAll = true
 		}
 
 	case 'K':
@@ -962,7 +846,6 @@ func (t *Terminal) executeCSI(cmd rune) {
 				grid[t.cursorY][c] = t.emptyCell()
 			}
 		}
-		t.markRowDirty(t.cursorY)
 
 	case 'd':
 		row := arg(0, 1) - 1
@@ -973,7 +856,6 @@ func (t *Terminal) executeCSI(cmd rune) {
 			row = t.rows - 1
 		}
 		t.cursorY = row
-		t.markRowDirty(t.cursorY)
 
 	case 'S':
 		n := arg(0, 1)
@@ -984,10 +866,8 @@ func (t *Terminal) executeCSI(cmd rune) {
 		for i := 0; i < n; i++ {
 			for r := t.scrollBottom; r > t.scrollTop; r-- {
 				grid[r] = grid[r-1]
-				t.markRowDirty(r)
 			}
 			grid[t.scrollTop] = t.emptyRow()
-			t.markRowDirty(t.scrollTop)
 		}
 
 	case '@':
@@ -1000,7 +880,6 @@ func (t *Terminal) executeCSI(cmd rune) {
 				row[c] = t.emptyCell()
 			}
 		}
-		t.markRowDirty(t.cursorY)
 
 	case 'X':
 		n := arg(0, 1)
@@ -1008,7 +887,6 @@ func (t *Terminal) executeCSI(cmd rune) {
 		for c := t.cursorX; c < t.cursorX+n && c < t.cols; c++ {
 			row[c] = t.emptyCell()
 		}
-		t.markRowDirty(t.cursorY)
 
 	case 's':
 		t.saveCursor()
@@ -1022,10 +900,8 @@ func (t *Terminal) executeCSI(cmd rune) {
 			for i := 0; i < n; i++ {
 				for r := t.scrollBottom; r > t.cursorY; r-- {
 					grid[r] = grid[r-1]
-					t.markRowDirty(r)
 				}
 				grid[t.cursorY] = t.emptyRow()
-				t.markRowDirty(t.cursorY)
 			}
 		}
 
@@ -1035,10 +911,8 @@ func (t *Terminal) executeCSI(cmd rune) {
 			for i := 0; i < n; i++ {
 				for r := t.cursorY; r < t.scrollBottom; r++ {
 					grid[r] = grid[r+1]
-					t.markRowDirty(r)
 				}
 				grid[t.scrollBottom] = t.emptyRow()
-				t.markRowDirty(t.scrollBottom)
 			}
 		}
 
@@ -1052,7 +926,6 @@ func (t *Terminal) executeCSI(cmd rune) {
 				row[c] = t.emptyCell()
 			}
 		}
-		t.markRowDirty(t.cursorY)
 
 	case 'r':
 		top := arg(0, 1) - 1
@@ -1066,23 +939,19 @@ func (t *Terminal) executeCSI(cmd rune) {
 		}
 		t.cursorX = 0
 		t.cursorY = 0
-		t.markRowDirty(t.cursorY)
 
 	case 'm':
 		t.executeSGR(args)
 
 	case 'n':
-		// DSR (Device Status Report)
 		mode := arg(0, 0)
 		if mode == 6 {
-			// Report Cursor Position: CPR -> \x1b[row;colR (1-based)
 			resp := fmt.Sprintf("\x1b[%d;%dR", t.cursorY+1, t.cursorX+1)
 			select {
 			case t.ResponseChan <- []byte(resp):
 			default:
 			}
 		} else if mode == 5 {
-			// Status Report -> \x1b[0n (OK)
 			select {
 			case t.ResponseChan <- []byte("\x1b[0n"):
 			default:
@@ -1091,13 +960,11 @@ func (t *Terminal) executeCSI(cmd rune) {
 
 	case 'c':
 		if t.csiLeader == '>' {
-			// Secondary Device Attributes (DA2) -> VT220 / xterm (return type 0, firmware 10, rom 1)
 			select {
 			case t.ResponseChan <- []byte("\x1b[>0;10;1c"):
 			default:
 			}
 		} else {
-			// Primary Device Attributes (DA) -> identify as VT220
 			select {
 			case t.ResponseChan <- []byte("\x1b[?62;c"):
 			default:
@@ -1118,7 +985,6 @@ func (t *Terminal) executeCSI(cmd rune) {
 					t.scrollTop = 0
 					t.scrollBottom = t.rows - 1
 					t.scrollOff = 0
-					t.dirtyAll = true
 				case 1048:
 					if enable {
 						t.saveCursor()
@@ -1145,7 +1011,6 @@ func (t *Terminal) executeCSI(cmd rune) {
 						t.scrollBottom = t.rows - 1
 						t.scrollOff = 0
 					}
-					t.dirtyAll = true
 				case 1000, 1002:
 					t.mouseTracking = enable
 				case 1006:

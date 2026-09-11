@@ -7,20 +7,6 @@ const (
 	ColorDefaultBG Color = 0x02000000
 )
 
-var (
-	ColorCursor      = Color(0x7aa2f7)
-	ColorSelectionBG = Color(0x364a82)
-	ColorSelectionFG = Color(0xffffff)
-	ColorHeaderBG    = Color(0x13141c)
-	ColorHeaderLine  = Color(0x292e42)
-	ColorBorder      = Color(0x3b4261)
-	ColorCloseDot    = Color(0xf7768e)
-	ColorMinDot      = Color(0xe0af68)
-	ColorMaxDot      = Color(0x9ece6a)
-	ColorBadgeText   = Color(0x7dcfff)
-	ColorMutedText   = Color(0x565f89)
-)
-
 var ansi16 = [16]Color{
 	0x15161e,
 	0xf7768e,
@@ -44,13 +30,8 @@ func RGB(r, g, b byte) Color {
 	return Color(uint32(r)<<16 | uint32(g)<<8 | uint32(b))
 }
 
-func (c Color) ToRGBA() (r, g, b, a byte) {
-	return byte((c >> 16) & 0xff), byte((c >> 8) & 0xff), byte(c & 0xff), 0xff
-}
-
 func (c Color) ToPixel() uint32 {
-	r, g, b, a := c.ToRGBA()
-	return uint32(b) | (uint32(g) << 8) | (uint32(r) << 16) | (uint32(a) << 24)
+	return uint32(c&0x00ffffff) | 0xff000000
 }
 
 func ANSI256(index int) Color {
