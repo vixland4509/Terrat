@@ -5,7 +5,7 @@
 <h1 align="center">TerraTerminal (<code>terrat</code>)</h1>
 
 <p align="center">
-  <b>A lightweight, frameless minimalist Linux terminal emulator written in pure Go.</b>
+  <b>A lightweight, frameless minimalist terminal emulator for Linux and Windows, written in pure Go.</b>
   <br>
   <i>Zero CGO &bull; Sub-5ms Cold Boot &bull; ~11MB Idle RAM &bull; Single Static Binary</i>
 </p>
@@ -36,7 +36,8 @@ Most terminal emulators today fall into two frustrating extremes:
 2. **C/C++ legacy terminals** that require tangled dynamic linkers, fragile CGO bindings, or sprawling toolchains.
 
 **TerraTerminal (`terrat`)** takes a radically simpler path:
-- **100% Pure Go:** Directly communicates with the X11 display server through the raw wire protocol (`xgb`). Zero CGO, zero system library headaches.
+- **100% Pure Go:** On Linux it talks directly to the X11 display server through the raw wire protocol (`xgb`); on Windows it uses the native ConPTY API. Zero CGO, zero system library headaches.
+- **Cross-Platform:** Builds and runs natively on both **Linux** (X11 / XWayland) and **Windows** (10/11 via ConPTY), with smart shell detection (Git Bash, WSL, PowerShell, cmd) out of the box.
 - **Universal Desktop Compatibility:** Runs smoothly across all Linux desktop environments and window managers (GNOME, KDE Plasma, XFCE, Cinnamon, MATE, LXQt, i3, bspwm, Hyprland, Sway, etc.) via X11 or XWayland.
 - **Microsecond cold boot:** Pops up on your screen in less than **5 milliseconds**.
 - **Flyweight memory footprint:** Stays under **~11MB RSS** in everyday use.
@@ -222,7 +223,8 @@ Settings are saved automatically in `~/.config/terrat/config.json`:
 ## Installation
 
 ### Prerequisites
-- Linux with any desktop environment or window manager (GNOME, KDE Plasma, XFCE, Cinnamon, MATE, LXQt, i3, bspwm, Hyprland, Sway, etc.) via X11 or XWayland.
+- **Linux:** any desktop environment or window manager (GNOME, KDE Plasma, XFCE, Cinnamon, MATE, LXQt, i3, bspwm, Hyprland, Sway, etc.) via X11 or XWayland.
+- **Windows:** Windows 10 or 11 (uses the built-in ConPTY API; no extra dependencies).
 - Go 1.21+ (only required for building from source).
 
 ### Build from Source
