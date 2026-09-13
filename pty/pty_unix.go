@@ -14,23 +14,25 @@ import (
 )
 
 type TerminalPTY struct {
-	file *os.File
-	cmd  *exec.Cmd
+	file      *os.File
+	cmd       *exec.Cmd
+	shellName string
 }
 
 func Start(cols, rows, pixelWidth, pixelHeight uint16, customCmd ...string) (*TerminalPTY, error) {
 	var cmd *exec.Cmd
+	var shellName string
 	if len(customCmd) > 0 && customCmd[0] != "" {
 		cmd = exec.Command(customCmd[0], customCmd[1:]...)
+		shellName = ExtractShellName(customCmd[0])
 	} else {
-		shell := os.Getenv("SHELL")
-		if shell == "" {
-			shell = "/bin/bash"
-			if _, err := os.Stat(shell); err != nil {
-				shell = "/bin/sh"
-			}
+		cmdArgs := ResolveUnixShell(GetDefaultShell())
+		if len(cmdArgs) > 1 {
+			cmd = exec.Command(cmdArgs[0], cmdArgs[1:]...)
+		} else {
+			cmd = exec.Command(cmdArgs[0])
 		}
-		cmd = exec.Command(shell)
+		shellName = ExtractShellName(cmdArgs[0])
 	}
 
 	var cleanEnv []string
@@ -60,8 +62,9 @@ func Start(cols, rows, pixelWidth, pixelHeight uint16, customCmd ...string) (*Te
 	}
 
 	return &TerminalPTY{
-		file: f,
-		cmd:  cmd,
+		file:      f,
+		cmd:       cmd,
+		shellName: shellName,
 	}, nil
 }
 
@@ -122,4 +125,9 @@ func (p *TerminalPTY) GetCwd() string {
 	}
 	return cwd
 }
+
+func (p *TerminalPTY) ShellName() string {
+	return p.shellName
+}
+
 

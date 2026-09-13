@@ -53,22 +53,21 @@ func (kh *KeyHandler) LookupAction(vk uint32, state uint16) ActionType {
 	isShift := (state & ModShift) != 0
 	isAlt := (state & ModAlt) != 0
 
-	// Ctrl+Shift Shortcuts
 	if isCtrl && isShift {
 		switch vk {
-		case 'C':
+		case 'C', 'c':
 			return ActionCopy
-		case 'V':
+		case 'V', 'v':
 			return ActionPaste
-		case 'A':
+		case 'A', 'a':
 			return ActionSelectAll
-		case 'T':
+		case 'T', 't':
 			return ActionNewTab
-		case 'W':
+		case 'W', 'w':
 			return ActionCloseTab
-		case 'F':
+		case 'F', 'f':
 			return ActionSearch
-		case 'D':
+		case 'D', 'd':
 			return ActionToggleDiagnostics
 		case VK_TAB:
 			return ActionPrevTab
@@ -153,9 +152,9 @@ func (kh *KeyHandler) LookupSpecialKey(vk uint32, state uint16) ([]byte, bool) {
 		return []byte(prefix + "\r"), true
 	case VK_BACK:
 		if isCtrl {
-			return []byte("\x17"), true // Ctrl+Backspace: delete word (WERASE)
+			return []byte("\x17"), true
 		}
-		return []byte(prefix + "\x7f"), true
+		return []byte(prefix + "\x08"), true
 	case VK_TAB:
 		if isShift {
 			return []byte("\x1b[Z"), true // Backtab

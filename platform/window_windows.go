@@ -5,7 +5,9 @@ package platform
 import (
 	"fmt"
 	"runtime"
+	"strings"
 	"sync"
+	"time"
 	"unicode/utf16"
 	"unsafe"
 
@@ -55,6 +57,7 @@ var (
 	procGlobalAlloc             = modKernel.NewProc("GlobalAlloc")
 	procGlobalLock              = modKernel.NewProc("GlobalLock")
 	procGlobalUnlock            = modKernel.NewProc("GlobalUnlock")
+	procGlobalFree              = modKernel.NewProc("GlobalFree")
 	procRtlMoveMemory           = modKernel.NewProc("RtlMoveMemory")
 
 	procStretchDIBits           = modGdi32.NewProc("StretchDIBits")
@@ -524,6 +527,18 @@ func wndProc(hwnd windows.Handle, msg, wParam, lParam uintptr) uintptr {
 			ksym = 0xff51
 		case VK_RIGHT:
 			ksym = 0xff53
+		case VK_HOME:
+			ksym = 0xff50
+		case VK_END:
+			ksym = 0xff57
+		case VK_PRIOR:
+			ksym = 0xff55
+		case VK_NEXT:
+			ksym = 0xff56
+		case VK_INSERT:
+			ksym = 0xff63
+		case VK_DELETE:
+			ksym = 0xffff
 		default:
 			if vk >= '0' && vk <= '9' {
 				ksym = vk
@@ -531,7 +546,7 @@ func wndProc(hwnd windows.Handle, msg, wParam, lParam uintptr) uintptr {
 				if (state & ModShift) != 0 {
 					ksym = vk
 				} else {
-					ksym = vk + 32 // lowercase
+					ksym = vk + 32
 				}
 			}
 		}
@@ -751,8 +766,21 @@ func (w *Window) SetClipboard(text string) {
 	if text == "" {
 		return
 	}
-	ret, _, _ := procOpenClipboard.Call(uintptr(w.hwnd))
-	if ret == 0 {
+
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\n", "\r\n")
+	text = strings.ReplaceAll(text, "\x00", "")
+
+	var opened bool
+	for i := 0; i < 20; i++ {
+		ret, _, _ := procOpenClipboard.Call(uintptr(w.hwnd))
+		if ret != 0 {
+			opened = true
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !opened {
 		return
 	}
 	defer procCloseClipboard.Call()
@@ -762,29 +790,40 @@ func (w *Window) SetClipboard(text string) {
 	utf16Units := utf16.Encode([]rune(text + "\x00"))
 	size := len(utf16Units) * 2
 
-	hMem, _, _ := procGlobalAlloc.Call(GMEM_MOVEABLE, uintptr(size))
+	hMem, _, _ := procGlobalAlloc.Call(0x0042, uintptr(size))
 	if hMem == 0 {
 		return
 	}
 
 	ptr, _, _ := procGlobalLock.Call(hMem)
 	if ptr == 0 {
+		procGlobalFree.Call(hMem)
 		return
 	}
 
 	procRtlMoveMemory.Call(ptr, uintptr(unsafe.Pointer(&utf16Units[0])), uintptr(size))
 	procGlobalUnlock.Call(hMem)
 
-	procSetClipboardData.Call(CF_UNICODETEXT, hMem)
+	res, _, _ := procSetClipboardData.Call(CF_UNICODETEXT, hMem)
+	if res == 0 {
+		procGlobalFree.Call(hMem)
+	}
 }
 
 func (w *Window) SetPrimary(text string) {
-	w.SetClipboard(text)
 }
 
 func (w *Window) Paste() {
-	ret, _, _ := procOpenClipboard.Call(uintptr(w.hwnd))
-	if ret == 0 {
+	var opened bool
+	for i := 0; i < 20; i++ {
+		ret, _, _ := procOpenClipboard.Call(uintptr(w.hwnd))
+		if ret != 0 {
+			opened = true
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !opened {
 		return
 	}
 	defer procCloseClipboard.Call()

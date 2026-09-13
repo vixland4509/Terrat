@@ -36,6 +36,7 @@ type Window struct {
 	AtomTargets         xproto.Atom
 	AtomTerratPaste     xproto.Atom
 	AtomNetWmOpacity    xproto.Atom
+	AtomText            xproto.Atom
 
 	clipMu        sync.RWMutex
 	clipboardText string
@@ -153,6 +154,7 @@ func NewWindow(title string, width, height uint16, iconPath string, iconData []b
 	w.AtomTargets, _ = internAtom(X, "TARGETS")
 	w.AtomTerratPaste, _ = internAtom(X, "TERRAT_SELECTION")
 	w.AtomNetWmOpacity, _ = internAtom(X, "_NET_WM_WINDOW_OPACITY")
+	w.AtomText, _ = internAtom(X, "TEXT")
 
 	motifAtom, err := internAtom(X, "_MOTIF_WM_HINTS")
 	if err == nil && motifAtom != 0 {
@@ -591,6 +593,9 @@ func (w *Window) HandleSelectionRequest(e xproto.SelectionRequestEvent) {
 			uint32(w.AtomUtf8String),
 			uint32(xproto.AtomString),
 		}
+		if w.AtomText != 0 {
+			targets = append(targets, uint32(w.AtomText))
+		}
 		data = make([]byte, len(targets)*4)
 		for i, t := range targets {
 			binary.LittleEndian.PutUint32(data[i*4:], t)
@@ -606,8 +611,15 @@ func (w *Window) HandleSelectionRequest(e xproto.SelectionRequestEvent) {
 			data,
 		)
 		success = true
-	} else if target == w.AtomUtf8String || target == xproto.AtomString {
+	} else if target == w.AtomUtf8String || target == xproto.AtomString || (w.AtomText != 0 && target == w.AtomText) {
 		data = []byte(text)
+		maxLen := int(xproto.Setup(w.X).MaximumRequestLength)*4 - 32
+		if maxLen <= 0 || maxLen > 262112 {
+			maxLen = 262112
+		}
+		if len(data) > maxLen {
+			data = data[:maxLen]
+		}
 		_ = xproto.ChangeProperty(
 			w.X,
 			xproto.PropModeReplace,

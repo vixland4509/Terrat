@@ -356,8 +356,12 @@ func (t *Terminal) GetSelectedText() string {
 	sX, sY, eX, eY := t.sel.Normalized()
 
 	var sb strings.Builder
+	minY := -(len(t.scrollback) - t.scrollOff)
+	if t.isAlt {
+		minY = 0
+	}
 	for y := sY; y <= eY; y++ {
-		if y < 0 || y >= t.rows {
+		if y < minY || y >= t.rows {
 			continue
 		}
 

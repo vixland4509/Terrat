@@ -7,6 +7,8 @@ import (
 )
 
 type Config struct {
+	Shell                 string  `json:"shell"`
+	DefaultShell          string  `json:"default_shell,omitempty"`
 	Theme                 string  `json:"theme"`
 	FontSize              float64 `json:"font_size"`
 	Opacity               float64 `json:"opacity"`
@@ -19,6 +21,7 @@ type Config struct {
 
 func DefaultConfig() *Config {
 	return &Config{
+		Shell:                 "",
 		Theme:                 "auto",
 		FontSize:              13.0,
 		Opacity:               0.95,
@@ -59,6 +62,11 @@ func Load() *Config {
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return DefaultConfig()
 	}
+
+	if cfg.Shell == "" && cfg.DefaultShell != "" {
+		cfg.Shell = cfg.DefaultShell
+	}
+	cfg.DefaultShell = ""
 
 	if cfg.Theme == "" {
 		cfg.Theme = "auto"

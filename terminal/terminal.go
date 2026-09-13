@@ -154,21 +154,31 @@ func (t *Terminal) GetCell(x, y int) Cell {
 			return EmptyCell()
 		}
 		if targetIdx < len(t.scrollback) {
-			if x < len(t.scrollback[targetIdx]) {
+			if x >= 0 && x < len(t.scrollback[targetIdx]) {
 				return t.scrollback[targetIdx][x]
 			}
 			return EmptyCell()
 		}
 		gridRow := targetIdx - len(t.scrollback)
 		grid := t.activeGrid()
-		if gridRow >= 0 && gridRow < len(grid) && x < len(grid[gridRow]) {
+		if gridRow >= 0 && gridRow < len(grid) && x >= 0 && x < len(grid[gridRow]) {
 			return grid[gridRow][x]
 		}
 		return EmptyCell()
 	}
 
+	if y < 0 && !t.isAlt {
+		targetIdx := len(t.scrollback) + y
+		if targetIdx >= 0 && targetIdx < len(t.scrollback) {
+			if x >= 0 && x < len(t.scrollback[targetIdx]) {
+				return t.scrollback[targetIdx][x]
+			}
+		}
+		return EmptyCell()
+	}
+
 	grid := t.activeGrid()
-	if y < len(grid) && x < len(grid[y]) {
+	if y >= 0 && y < len(grid) && x >= 0 && x < len(grid[y]) {
 		return grid[y][x]
 	}
 	return EmptyCell()
@@ -376,6 +386,7 @@ func (t *Terminal) ScrollKeepSelection(delta int) {
 	if actualDelta != 0 && t.sel.Active {
 		t.sel.StartY += actualDelta
 		t.sel.OrigStartY += actualDelta
+		t.sel.EndY += actualDelta
 		if t.sel.StartY >= t.rows {
 			t.sel.StartY = t.rows - 1
 		}
@@ -387,6 +398,12 @@ func (t *Terminal) ScrollKeepSelection(delta int) {
 		}
 		if t.sel.OrigStartY < 0 {
 			t.sel.OrigStartY = 0
+		}
+		if t.sel.EndY >= t.rows {
+			t.sel.EndY = t.rows - 1
+		}
+		if t.sel.EndY < 0 {
+			t.sel.EndY = 0
 		}
 	}
 }

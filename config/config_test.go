@@ -8,6 +8,9 @@ import (
 
 func TestConfigDefault(t *testing.T) {
 	cfg := DefaultConfig()
+	if cfg.Shell != "" {
+		t.Fatalf("expected default Shell to be empty, got %s", cfg.Shell)
+	}
 	if cfg.Theme != "auto" {
 		t.Fatalf("expected default theme to be 'auto', got %s", cfg.Theme)
 	}
@@ -81,3 +84,42 @@ func TestConfigSaveAndLoad(t *testing.T) {
 		t.Fatalf("expected reloaded Diagnostics to be false, got %v", reloaded.Diagnostics)
 	}
 }
+
+func TestConfigShellAndDefaultShell(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "terrat-config-shell-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	origConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	defer os.Setenv("XDG_CONFIG_HOME", origConfigHome)
+	os.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	cfgPath, err := ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	shellData := []byte(`{"shell": "C:\\Program Files\\Git\\bin\\bash.exe"}`)
+	if err := os.WriteFile(cfgPath, shellData, 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Load()
+	if cfg.Shell != `C:\Program Files\Git\bin\bash.exe` {
+		t.Fatalf("expected Shell to be 'C:\\Program Files\\Git\\bin\\bash.exe', got %q", cfg.Shell)
+	}
+
+	defaultShellData := []byte(`{"default_shell": "bash"}`)
+	if err := os.WriteFile(cfgPath, defaultShellData, 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg2 := Load()
+	if cfg2.Shell != "bash" {
+		t.Fatalf("expected Shell to be 'bash' when default_shell is provided, got %q", cfg2.Shell)
+	}
+}
+

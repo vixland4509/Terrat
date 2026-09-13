@@ -203,5 +203,46 @@ func TestNoTrailingEmptyLines(t *testing.T) {
 	}
 }
 
+func TestSelectAllLargeScrollback(t *testing.T) {
+	term := New(80, 24)
+	for i := 0; i < 500; i++ {
+		term.Write([]byte(fmt.Sprintf("Item_%03d\r\n", i)))
+	}
+
+	term.SelectAll()
+	text := term.GetSelectedText()
+	lines := strings.Split(text, "\n")
+
+	if len(lines) != 500 {
+		t.Fatalf("expected 500 lines, got %d", len(lines))
+	}
+	if lines[0] != "Item_000" {
+		t.Fatalf("expected Item_000, got %q", lines[0])
+	}
+	if lines[499] != "Item_499" {
+		t.Fatalf("expected Item_499, got %q", lines[499])
+	}
+}
+
+func TestSelectionScrollbackRange(t *testing.T) {
+	term := New(40, 10)
+	for i := 0; i < 30; i++ {
+		term.Write([]byte(fmt.Sprintf("Row_%02d\r\n", i)))
+	}
+
+	term.StartSelection(0, 2)
+	term.UpdateSelection(10, 5)
+
+	term.ScrollKeepSelection(2)
+	term.mu.RLock()
+	startY := term.sel.StartY
+	endY := term.sel.EndY
+	term.mu.RUnlock()
+
+	if startY != 4 || endY != 7 {
+		t.Fatalf("expected startY=4 endY=7, got startY=%d endY=%d", startY, endY)
+	}
+}
+
 
 

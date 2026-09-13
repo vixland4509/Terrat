@@ -79,6 +79,7 @@ func main() {
 	titleFlag := fs.String("title", AppName, "Set initial window title")
 	fontSizeFlag := fs.Float64("font-size", 0.0, "Font size in points (defaults to config)")
 	themeFlag := fs.String("theme", "", "Color theme override (tokyo-night, catppuccin-mocha, minecraft, tokyo-day, solarized-light)")
+	shellFlag := fs.String("shell", "", "Default shell override (e.g., bash, wsl.exe, powershell.exe)")
 	_ = fs.Parse(remainingArgs)
 
 	if *verFlag || *versionFlag {
@@ -87,6 +88,10 @@ func main() {
 	}
 
 	appConfig := config.Load()
+	if *shellFlag != "" {
+		appConfig.Shell = *shellFlag
+	}
+	pty.SetDefaultShell(appConfig.Shell)
 	if *fontSizeFlag > 0 {
 		appConfig.FontSize = *fontSizeFlag
 	}
@@ -151,9 +156,14 @@ func main() {
 		t := terminal.New(cols, rows)
 		t.SetTheme(th)
 
+		initialTitle := "bash"
+		if pMaster != nil && pMaster.ShellName() != "" {
+			initialTitle = pMaster.ShellName()
+		}
+
 		tab := &Tab{
 			ID:     nextTabID,
-			Title:  "bash",
+			Title:  initialTitle,
 			Term:   t,
 			PTY:    pMaster,
 			ExitCh: make(chan struct{}),
@@ -1555,14 +1565,10 @@ func main() {
 						text := activeTerm.GetSelectedText()
 						if text != "" {
 							win.SetClipboard(text)
+							win.SetPrimary(text)
 						}
 						activeTerm.ClearSelection()
 						triggerRedraw()
-					} else {
-						text := activeTerm.GetAllText()
-						if text != "" {
-							win.SetClipboard(text)
-						}
 					}
 				} else if action == platform.ActionPaste {
 					win.Paste()
@@ -1605,8 +1611,10 @@ func main() {
 							isAcceptKey := (keysym == 0xff53) || (keysym == 0xff09 && (e.State&platform.ModShift) == 0)
 							if isAcceptKey {
 								if len(currentInputBuffer) > 0 && currentInputBuffer[len(currentInputBuffer)-1] == ' ' && !strings.HasSuffix(currentInputBuffer, "\\ ") {
-									_, _ = activePTY.Write([]byte{0x08, '\\', ' '})
-									currentInputBuffer = currentInputBuffer[:len(currentInputBuffer)-1] + "\\ "
+									if runtime.GOOS != "windows" {
+										_, _ = activePTY.Write([]byte{0x08, '\\', ' '})
+										currentInputBuffer = currentInputBuffer[:len(currentInputBuffer)-1] + "\\ "
+									}
 								}
 								toWrite := []byte(activeGhostText)
 								_, _ = activePTY.Write(toWrite)
