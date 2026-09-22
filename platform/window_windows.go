@@ -4,6 +4,7 @@ package platform
 
 import (
 	"fmt"
+	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -59,9 +60,23 @@ var (
 	procGlobalUnlock            = modKernel.NewProc("GlobalUnlock")
 	procGlobalFree              = modKernel.NewProc("GlobalFree")
 	procRtlMoveMemory           = modKernel.NewProc("RtlMoveMemory")
+	procAttachConsole           = modKernel.NewProc("AttachConsole")
 
 	procStretchDIBits           = modGdi32.NewProc("StretchDIBits")
 )
+
+func init() {
+	const attachParentProcess = ^uintptr(0)
+	ret, _, _ := procAttachConsole.Call(attachParentProcess)
+	if ret != 0 {
+		if h, err := windows.GetStdHandle(windows.STD_OUTPUT_HANDLE); err == nil && h != 0 && h != windows.InvalidHandle {
+			os.Stdout = os.NewFile(uintptr(h), "/dev/stdout")
+		}
+		if h, err := windows.GetStdHandle(windows.STD_ERROR_HANDLE); err == nil && h != 0 && h != windows.InvalidHandle {
+			os.Stderr = os.NewFile(uintptr(h), "/dev/stderr")
+		}
+	}
+}
 
 const (
 	WS_OVERLAPPED       = 0x00000000

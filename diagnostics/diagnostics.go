@@ -62,27 +62,35 @@ var shellBuiltins = map[string]bool{
 }
 
 var commonBaseCommands = []string{
-	"cat", "cd", "cp", "curl", "chmod", "chown", "clear",
-	"df", "diff", "docker", "du",
+	"cat", "cd", "cp", "curl", "chmod", "chown", "clear", "cls", "cmd",
+	"df", "diff", "dir", "docker", "du",
 	"echo", "exit", "export",
 	"find", "free",
 	"git", "go", "grep", "gzip",
 	"head", "history", "htop",
-	"ip",
+	"ip", "ipconfig",
 	"journalctl",
 	"kill", "killall",
 	"less", "ln", "ls",
 	"make", "man", "mkdir", "mv",
 	"nano", "nc", "netstat", "npm", "nvim",
-	"ping", "pkill", "ps", "pwd", "pnpm",
+	"ping", "pkill", "powershell", "ps", "pwd", "pnpm", "pwsh", "python", "python3",
 	"rm", "rmdir",
 	"sed", "ssh", "sudo", "systemctl",
 	"tail", "tar", "top", "touch", "tree",
 	"uname", "uptime",
 	"vim",
-	"wget", "which", "whoami",
+	"wget", "where", "which", "whoami", "winget",
 	"yarn",
 }
+
+var commonBaseSet = func() map[string]bool {
+	m := make(map[string]bool, len(commonBaseCommands))
+	for _, c := range commonBaseCommands {
+		m[c] = true
+	}
+	return m
+}()
 
 var commonTypos = map[string]string{
 	"sl":     "ls",
@@ -476,15 +484,17 @@ func Analyze(rawInput string) *Diagnostic {
 	}
 
 	if fix, ok := commonTypos[baseCmd]; ok {
-		if isCommandOnPath(fix) || shellBuiltins[fix] || IsAlias(fix) {
-			fixedLine := fix + strings.TrimPrefix(activeSeg, baseCmd)
-			return &Diagnostic{
-				Severity:   SeverityError,
-				Message:    fmt.Sprintf("Command '%s' not recognized", baseCmd),
-				Suggestion: fmt.Sprintf("Did you mean '%s'?", fix),
-				QuickFix:   prefix + fixedLine,
-			}
+		fixedLine := fix + strings.TrimPrefix(activeSeg, baseCmd)
+		return &Diagnostic{
+			Severity:   SeverityError,
+			Message:    fmt.Sprintf("Command '%s' not recognized", baseCmd),
+			Suggestion: fmt.Sprintf("Did you mean '%s'?", fix),
+			QuickFix:   prefix + fixedLine,
 		}
+	}
+
+	if commonBaseSet[baseCmd] {
+		return nil
 	}
 
 	if len(baseCmd) >= 2 && len(baseCmd) <= 15 {
@@ -493,14 +503,12 @@ func Analyze(rawInput string) *Diagnostic {
 			maxD = 2
 		}
 		if match := FindClosestMatch(baseCmd, commonBaseCommands, maxD); match != "" {
-			if isCommandOnPath(match) || shellBuiltins[match] || IsAlias(match) {
-				fixedLine := match + strings.TrimPrefix(activeSeg, baseCmd)
-				return &Diagnostic{
-					Severity:   SeverityError,
-					Message:    fmt.Sprintf("Command '%s' not recognized", baseCmd),
-					Suggestion: fmt.Sprintf("Did you mean '%s'?", match),
-					QuickFix:   prefix + fixedLine,
-				}
+			fixedLine := match + strings.TrimPrefix(activeSeg, baseCmd)
+			return &Diagnostic{
+				Severity:   SeverityError,
+				Message:    fmt.Sprintf("Command '%s' not recognized", baseCmd),
+				Suggestion: fmt.Sprintf("Did you mean '%s'?", match),
+				QuickFix:   prefix + fixedLine,
 			}
 		}
 	}

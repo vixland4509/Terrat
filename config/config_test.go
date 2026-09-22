@@ -23,9 +23,6 @@ func TestConfigDefault(t *testing.T) {
 	if !cfg.GhostText {
 		t.Fatalf("expected default GhostText to be true")
 	}
-	if !cfg.ConfirmMultilinePaste {
-		t.Fatalf("expected default ConfirmMultilinePaste to be true")
-	}
 	if !cfg.SanitizePaste {
 		t.Fatalf("expected default SanitizePaste to be true")
 	}

@@ -3,7 +3,7 @@ VERSION?=0.2.3
 PREFIX?=$(HOME)/go/bin
 DESKTOP_DIR=$(HOME)/.local/share/applications
 
-.PHONY: all build run clean install release site-build site-dev
+.PHONY: all build run clean install release package package-linux package-windows site-build site-dev
 
 all: build
 
@@ -23,8 +23,8 @@ install: build
 	cp icon.png $(PREFIX)/icon.png
 	cp icon.png $(ICON_DIR)/terraterminal.png
 	cp icon.png $(ICON_DIR)/terrat.png
-	cp terraterminal.desktop $(DESKTOP_DIR)/terraterminal.desktop
-	cp terraterminal.desktop $(DESKTOP_DIR)/terrat.desktop
+	cp packaging/terrat.desktop $(DESKTOP_DIR)/terraterminal.desktop
+	cp packaging/terrat.desktop $(DESKTOP_DIR)/terrat.desktop
 	sed -i 's|Exec=.*|Exec=$(PREFIX)/$(BINARY)|g' $(DESKTOP_DIR)/terraterminal.desktop
 	sed -i 's|Icon=.*|Icon=$(ICON_DIR)/terraterminal.png|g' $(DESKTOP_DIR)/terraterminal.desktop
 	sed -i 's|Exec=.*|Exec=$(PREFIX)/$(BINARY)|g' $(DESKTOP_DIR)/terrat.desktop
@@ -37,21 +37,10 @@ clean:
 	rm -f $(BINARY)
 	rm -rf dist release
 
+package: release
+
 release:
-	@mkdir -p dist
-	@echo "Building release binaries..."
-	GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=$(VERSION)" -o dist/$(BINARY)-linux-amd64 main.go
-	GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.Version=$(VERSION)" -o dist/$(BINARY)-linux-arm64 main.go
-	GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui -X main.Version=$(VERSION)" -o dist/$(BINARY)-windows-amd64.exe main.go
-	GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -ldflags="-s -w -H=windowsgui -X main.Version=$(VERSION)" -o dist/$(BINARY)-windows-arm64.exe main.go
-	@echo "Packaging release assets..."
-	@cd dist && tar -czf $(BINARY)-v$(VERSION)-linux-amd64.tar.gz $(BINARY)-linux-amd64
-	@cd dist && tar -czf $(BINARY)-v$(VERSION)-linux-arm64.tar.gz $(BINARY)-linux-arm64
-	@cd dist && zip -q $(BINARY)-v$(VERSION)-windows-amd64.zip $(BINARY)-windows-amd64.exe
-	@cd dist && zip -q $(BINARY)-v$(VERSION)-windows-arm64.zip $(BINARY)-windows-arm64.exe
-	@cd dist && sha256sum *.tar.gz *.zip > checksums.txt
-	@echo "Release assets ready in dist/:"
-	@ls -lh dist/
+	@./packaging/build-packages.sh $(VERSION)
 
 site-build:
 	cd site && npm run build

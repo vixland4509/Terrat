@@ -33,7 +33,7 @@ const (
 
 var (
 	Version   = "0.1.5"
-	AppBanner = "TerraTerminal (Terrat) v" + Version + " - Blazing fast minimalist terminal for Linux"
+	AppBanner = "TerraTerminal (Terrat) v" + Version + " - Blazing fast minimalist terminal for Linux & Windows"
 )
 
 type Tab struct {
@@ -108,8 +108,8 @@ func main() {
 	}
 	defer fontEngine.Close()
 
-	initCols := 80
-	initRows := 24
+	initCols := 120
+	initRows := 32
 	if runtime.GOOS == "windows" {
 		initCols = 128
 		initRows = 33
@@ -322,12 +322,6 @@ func main() {
 	var searchMatches []render.SearchMatch
 	activeSearchIdx := 0
 
-	isPasteModalOpen := false
-	pendingPasteText := ""
-	var pendingPasteWarnings []string
-	pendingPasteIsURL := false
-	pendingPasteIsLarge := false
-
 	var hoveredURL *render.URLRange
 
 	updateScrollbar := func(eventY int) {
@@ -386,7 +380,7 @@ func main() {
 
 	suggestEngine := autosuggest.NewEngine()
 	updateGhostText = func() {
-		if !appConfig.GhostText || tabs[activeTabIdx].Term.IsAlt() || isSearchOpen || isPrefOpen || isPasteModalOpen {
+		if !appConfig.GhostText || tabs[activeTabIdx].Term.IsAlt() || isSearchOpen || isPrefOpen {
 			activeGhostText = ""
 			return
 		}
@@ -404,7 +398,7 @@ func main() {
 	}
 
 	updateDiagnostics = func() {
-		if !appConfig.Diagnostics || tabs[activeTabIdx].Term.IsAlt() || isSearchOpen || isPrefOpen || isPasteModalOpen {
+		if !appConfig.Diagnostics || tabs[activeTabIdx].Term.IsAlt() || isSearchOpen || isPrefOpen {
 			activeDiag = nil
 			return
 		}
@@ -502,12 +496,6 @@ func main() {
 				Enabled:  appConfig.GhostText,
 			},
 			{
-				ID:       "paste_guard",
-				Label:    "Multiline Paste Guard",
-				IsToggle: true,
-				Enabled:  appConfig.ConfirmMultilinePaste,
-			},
-			{
 				ID:       "sanitize_paste",
 				Label:    "Sanitize Pasted Text",
 				IsToggle: true,
@@ -555,9 +543,6 @@ func main() {
 			} else {
 				updateGhostText()
 			}
-		case "paste_guard":
-			appConfig.ConfirmMultilinePaste = !appConfig.ConfirmMultilinePaste
-			_ = config.Save(appConfig)
 		case "sanitize_paste":
 			appConfig.SanitizePaste = !appConfig.SanitizePaste
 			_ = config.Save(appConfig)
@@ -644,40 +629,15 @@ func main() {
 		}
 		raw := string(pastedBytes)
 		var text string
-		var warnings []string
 
 		if appConfig.SanitizePaste {
 			res := paste.Sanitize(raw)
 			text = res.Sanitized
-			warnings = res.Warnings
 		} else {
 			text = raw
 		}
 
 		if text == "" {
-			return
-		}
-
-		activeTerm := tabs[activeTabIdx].Term
-
-		if activeTerm.IsAlt() {
-			doWritePastedText(text)
-			return
-		}
-
-		isURL := paste.IsURL(text)
-		isLarge := paste.IsLargePayload(text)
-		isMulti := paste.IsMultiline(text)
-		hasDangerousURL := isURL && paste.HasDangerousShellChars(text)
-
-		needConfirmation := appConfig.ConfirmMultilinePaste && (isMulti || isLarge || hasDangerousURL || len(warnings) > 0)
-		if needConfirmation {
-			isPasteModalOpen = true
-			pendingPasteText = text
-			pendingPasteWarnings = warnings
-			pendingPasteIsURL = isURL
-			pendingPasteIsLarge = isLarge
-			triggerRedraw()
 			return
 		}
 
@@ -714,9 +674,6 @@ func main() {
 			canvas.RenderPreferencesModal(activeTerm.Theme(), prefIndex, getSettingsItems(), savedThemeID)
 		}
 
-		if isPasteModalOpen {
-			canvas.RenderPasteConfirmModal(activeTerm.Theme(), pendingPasteText, pendingPasteWarnings, pendingPasteIsURL, pendingPasteIsLarge)
-		}
 		win.Blit(canvas.Pixels, currentWidth, currentHeight)
 	}
 
@@ -1052,14 +1009,6 @@ func main() {
 			}
 
 			if e.Detail == 1 {
-				if isPasteModalOpen {
-					isPasteModalOpen = false
-					pendingPasteText = ""
-					pendingPasteWarnings = nil
-					triggerRedraw()
-					continue
-				}
-
 				if isCtrl && hoveredURL != nil {
 					openURL(hoveredURL.URL)
 					continue
@@ -1364,35 +1313,6 @@ func main() {
 					prefIndex = 0
 				}
 				triggerRedraw()
-				continue
-			}
-
-			if isPasteModalOpen {
-				switch keysym {
-				case 0xff1b, 'c', 'C', 'n', 'N':
-					isPasteModalOpen = false
-					pendingPasteText = ""
-					pendingPasteWarnings = nil
-					triggerRedraw()
-				case 0xff0d, 'p', 'P', 'y', 'Y':
-					textToPaste := pendingPasteText
-					isPasteModalOpen = false
-					pendingPasteText = ""
-					pendingPasteWarnings = nil
-					doWritePastedText(textToPaste)
-				case 's', 'S':
-					textToPaste := paste.FlattenToSingleLine(pendingPasteText)
-					isPasteModalOpen = false
-					pendingPasteText = ""
-					pendingPasteWarnings = nil
-					doWritePastedText(textToPaste)
-				case 'q', 'Q':
-					textToPaste := paste.QuoteURL(pendingPasteText)
-					isPasteModalOpen = false
-					pendingPasteText = ""
-					pendingPasteWarnings = nil
-					doWritePastedText(textToPaste)
-				}
 				continue
 			}
 

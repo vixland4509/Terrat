@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=TerraTerminal
+GenericName=Terminal Emulator
+Comment=Lightweight pure Go high-performance terminal emulator
+Exec=terrat
+Icon=terrat
+Terminal=false
+Categories=System;TerminalEmulator;Utility;
+Keywords=shell;prompt;command;commandline;cmd;terrat;terminal;
+StartupNotify=true
+StartupWMClass=terrat

@@ -103,8 +103,7 @@ Most terminal emulators today fall into two frustrating extremes:
 - **Middle-click:** Pastes from `PRIMARY` selection.
 - **Smart Ctrl+C:** If text is selected, `Ctrl+C` copies to clipboard; if no text is selected, it sends standard `SIGINT` to interrupt the current process.
 - **Smart Ctrl+V:** Pastes from clipboard in normal shell mode, while intelligently preserving `Ctrl+V` for visual-block selection inside full-screen editors (`vim`, `nano`).
-- **Bracketed Paste Mode (DECSET 2004):** Prevents staircase effect and broken indentation in Python REPLs, Node, and shells by wrapping pasted streams in standard terminal boundary markers (`\e[200~` ... `\e[201~`).
-- **Multiline Paste Safety Review:** Detects dangerous multi-line paste payloads that would execute commands immediately, presenting an interactive confirmation modal with syntax preview and options to paste as-is, flatten to single-line, or quote.
+- **Bracketed Paste Mode (DECSET 2004):** Seamless multi-line paste that prevents staircase effect and broken indentation in Python REPLs, Node, and shells by wrapping pasted streams in standard terminal boundary markers (`\e[200~` ... `\e[201~`).
 - **Anti-Pastejacking Sanitization:** Automatically strips malicious ANSI escape sequences, raw control codes, zero-width spaces, and bidirectional Unicode overrides before executing.
 
 ### 9. Smart Inline Ghost Text (Fish-like Autosuggestions)
@@ -127,10 +126,6 @@ Most terminal emulators today fall into two frustrating extremes:
 | Shortcut | Action |
 | :--- | :--- |
 | `Ctrl + V` (in shell) / `Ctrl + Shift + V` / `Shift + Insert` | Paste text from clipboard |
-| `Enter` / `P` (in Paste Modal) | Confirm and paste all lines as-is |
-| `S` (in Paste Modal) | Flatten multi-line commands to safe single-line |
-| `Q` (in Paste Modal) | Quote text (e.g. URLs with `&` or `?`) |
-| `Esc` / `C` (in Paste Modal) | Cancel paste safely |
 | `Ctrl + Shift + C` (or `Ctrl + C` with selection) | Copy selected text to clipboard |
 | `Middle Click` | Paste from X11 `PRIMARY` selection |
 
@@ -203,7 +198,6 @@ Settings are saved automatically in `~/.config/terrat/config.json`:
   "opacity": 0.95,
   "ghost_text": true,
   "diagnostics": true,
-  "confirm_multiline_paste": true,
   "sanitize_paste": true,
   "bracketed_paste": true
 }
@@ -214,7 +208,6 @@ Settings are saved automatically in `~/.config/terrat/config.json`:
 - `opacity`: Window opacity from `0.20` to `1.0` (compositor required for transparency).
 - `ghost_text`: Enable/disable inline command autosuggestions (`true` or `false`).
 - `diagnostics`: Enable/disable real-time typo diagnostics and linting (`true` or `false`).
-- `confirm_multiline_paste`: Interactive confirmation modal before executing multi-line paste (`true` or `false`).
 - `sanitize_paste`: Strip malicious ANSI escape codes, zero-width spaces, and bidi overrides (`true` or `false`).
 - `bracketed_paste`: Wrap pasted text in DECSET 2004 bracketed paste markers for safe REPL indentation (`true` or `false`).
 
@@ -227,6 +220,43 @@ Settings are saved automatically in `~/.config/terrat/config.json`:
 - **Windows:** Windows 10 or 11 (uses the built-in ConPTY API; no extra dependencies).
 - Go 1.21+ (only required for building from source).
 
+### Pre-built Packages & Release Downloads
+
+Ready-to-use binaries and distro packages are available in every release:
+
+#### Debian / Ubuntu / Linux Mint / Pop!_OS (`.deb`)
+```bash
+sudo apt install ./terrat_*_amd64.deb    # or arm64
+```
+
+#### Fedora / RHEL / CentOS / openSUSE (`.rpm`)
+```bash
+sudo dnf install ./terrat-*-1.x86_64.rpm  # or aarch64
+```
+
+#### Arch Linux / Manjaro / EndeavourOS (`.pkg.tar.zst`)
+```bash
+sudo pacman -U ./terrat-*-1-x86_64.pkg.tar.zst  # or aarch64
+```
+
+#### Linux Portable (`.tar.gz`)
+Extract and run standalone anywhere, or run the optional user-space installer:
+```bash
+tar -xzf terrat-v*-linux-amd64.tar.gz
+cd terrat-v*-linux-amd64
+
+# Run directly without installing:
+./terrat
+
+# Or install for current user (~/.local/bin and desktop menu) without sudo:
+./install.sh
+```
+
+#### Windows Portable (`.zip`)
+Download `terrat-v*-windows-amd64.zip`, extract, and launch `terrat.exe`. No installation required.
+
+---
+
 ### Build from Source
 ```bash
 # Clone the repository
@@ -238,12 +268,12 @@ make build
 
 # Run immediately
 ./terrat
-```
 
-### Install System-Wide
-```bash
-# Installs to ~/go/bin/terrat, copies circular icon, and registers desktop launcher
+# Install to ~/go/bin with desktop shortcut
 make install
+
+# Build all packages (.deb, .rpm, Arch, and portable tar/zip)
+make release
 ```
 
 ### Launch with Custom Command

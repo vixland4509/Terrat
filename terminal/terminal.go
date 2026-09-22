@@ -35,6 +35,10 @@ type Terminal struct {
 
 	bracketedPaste bool
 
+	autoWrap      bool
+	wrapNext      bool
+	savedWrapNext bool
+
 	cursorX        int
 	cursorY        int
 	cursorVisible  bool
@@ -81,6 +85,7 @@ func New(cols, rows int) *Terminal {
 		rows:          rows,
 		maxHistory:    5000,
 		cursorVisible: true,
+		autoWrap:      true,
 		theme:         th,
 		currFG:        ColorDefaultFG,
 		currBG:        ColorDefaultBG,
@@ -129,9 +134,6 @@ func (t *Terminal) makeRow() []Cell {
 
 func (t *Terminal) RLock()   { t.mu.RLock() }
 func (t *Terminal) RUnlock() { t.mu.RUnlock() }
-
-func (t *Terminal) Lock()   { t.mu.Lock() }
-func (t *Terminal) Unlock() { t.mu.Unlock() }
 
 func (t *Terminal) Cursor() (int, int, bool) {
 	t.mu.RLock()
@@ -530,6 +532,7 @@ func (t *Terminal) Resize(newCols, newRows int) {
 	if t.cursorX >= newCols {
 		t.cursorX = newCols - 1
 	}
+	t.wrapNext = false
 	t.sel.Active = false
 }
 
@@ -555,17 +558,21 @@ func (t *Terminal) processRune(r rune) {
 			t.state = stateEscape
 		case '\n':
 			t.lineFeed()
+			t.wrapNext = false
 		case '\r':
 			t.cursorX = 0
+			t.wrapNext = false
 		case '\b':
 			if t.cursorX > 0 {
 				t.cursorX--
 			}
+			t.wrapNext = false
 		case '\t':
 			t.cursorX = (t.cursorX/8 + 1) * 8
 			if t.cursorX >= t.cols {
 				t.cursorX = t.cols - 1
 			}
+			t.wrapNext = false
 		case '\a':
 		case '\x00':
 		default:
@@ -661,9 +668,12 @@ func (t *Terminal) processRune(r rune) {
 }
 
 func (t *Terminal) putChar(r rune) {
-	if t.cursorX >= t.cols {
-		t.cursorX = 0
-		t.lineFeed()
+	if t.wrapNext {
+		if t.autoWrap {
+			t.cursorX = 0
+			t.lineFeed()
+		}
+		t.wrapNext = false
 	}
 
 	grid := t.activeGrid()
@@ -678,7 +688,13 @@ func (t *Terminal) putChar(r rune) {
 		}
 	}
 
-	t.cursorX++
+	if t.cursorX < t.cols-1 {
+		t.cursorX++
+	} else {
+		if t.autoWrap {
+			t.wrapNext = true
+		}
+	}
 }
 
 func (t *Terminal) lineFeed() {
@@ -731,6 +747,7 @@ func (t *Terminal) reverseIndex() {
 func (t *Terminal) saveCursor() {
 	t.savedX = t.cursorX
 	t.savedY = t.cursorY
+	t.savedWrapNext = t.wrapNext
 	t.savedFG = t.currFG
 	t.savedBG = t.currBG
 	t.savedBold = t.currBold
@@ -741,6 +758,7 @@ func (t *Terminal) saveCursor() {
 func (t *Terminal) restoreCursor() {
 	t.cursorX = t.savedX
 	t.cursorY = t.savedY
+	t.wrapNext = t.savedWrapNext
 	if t.cursorX >= t.cols {
 		t.cursorX = t.cols - 1
 	}
@@ -775,6 +793,11 @@ func (t *Terminal) executeCSI(cmd rune) {
 	}
 
 	grid := t.activeGrid()
+
+	switch cmd {
+	case 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'f', 'd', 'J', 'K':
+		t.wrapNext = false
+	}
 
 	switch cmd {
 	case 'A':
@@ -1030,6 +1053,9 @@ func (t *Terminal) executeCSI(cmd rune) {
 				switch mode {
 				case 1:
 					t.appCursor = enable
+				case 7:
+					t.autoWrap = enable
+					t.wrapNext = false
 				case 25:
 					t.cursorVisible = enable
 				case 1047, 47:
