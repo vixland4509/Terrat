@@ -35,16 +35,16 @@ type Terminal struct {
 
 	bracketedPaste bool
 
-	cursorX       int
-	cursorY       int
-	cursorVisible bool
-	savedX        int
-	savedY        int
-	savedFG       Color
-	savedBG       Color
-	savedBold     bool
+	cursorX        int
+	cursorY        int
+	cursorVisible  bool
+	savedX         int
+	savedY         int
+	savedFG        Color
+	savedBG        Color
+	savedBold      bool
 	savedUnderline bool
-	savedInverse  bool
+	savedInverse   bool
 
 	currFG        Color
 	currBG        Color
@@ -256,6 +256,39 @@ func (t *Terminal) GetRowString(y int) string {
 		runes[x] = r
 	}
 	return string(runes)
+}
+
+// SearchMatchInfo reports a match position inside the visible grid.
+// StartCol/EndCol are rune-based column indices (one rune per cell).
+type SearchMatchInfo struct {
+	Row      int
+	StartCol int
+	EndCol   int
+}
+
+// FindRowMatches returns match column ranges for a single row string that
+// contains exactly one rune per grid cell. Comparison is case-insensitive
+// and rune-based, so multi-byte characters align with grid columns.
+func FindRowMatches(rowStr, query string) []SearchMatchInfo {
+	if query == "" {
+		return nil
+	}
+	q := []rune(strings.ToLower(query))
+	r := []rune(strings.ToLower(rowStr))
+	var matches []SearchMatchInfo
+	for x := 0; x+len(q) <= len(r); x++ {
+		matched := true
+		for j, qr := range q {
+			if r[x+j] != qr {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			matches = append(matches, SearchMatchInfo{StartCol: x, EndCol: x + len(q) - 1})
+		}
+	}
+	return matches
 }
 
 func (t *Terminal) Theme() *Theme {
@@ -603,12 +636,13 @@ func (t *Terminal) processRune(r rune) {
 		t.state = stateNormal
 
 	case stateOSC:
-		if r == '\a' {
+		switch r {
+		case '\a':
 			t.executeOSC()
 			t.state = stateNormal
-		} else if r == '\x1b' {
+		case '\x1b':
 			t.state = stateOSCEscape
-		} else {
+		default:
 			if len(t.oscBuffer) < 4096 {
 				t.oscBuffer = append(t.oscBuffer, r)
 			}
@@ -962,13 +996,14 @@ func (t *Terminal) executeCSI(cmd rune) {
 
 	case 'n':
 		mode := arg(0, 0)
-		if mode == 6 {
+		switch mode {
+		case 6:
 			resp := fmt.Sprintf("\x1b[%d;%dR", t.cursorY+1, t.cursorX+1)
 			select {
 			case t.ResponseChan <- []byte(resp):
 			default:
 			}
-		} else if mode == 5 {
+		case 5:
 			select {
 			case t.ResponseChan <- []byte("\x1b[0n"):
 			default:

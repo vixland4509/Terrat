@@ -120,7 +120,8 @@ func (t *Terminal) UpdateSelection(x, y int) {
 		y = t.rows - 1
 	}
 
-	if t.sel.Mode == SelectionModeWord {
+	switch t.sel.Mode {
+	case SelectionModeWord:
 		wLeft, wRight := t.findWordBounds(x, y)
 		if y < t.sel.OrigStartY || (y == t.sel.OrigStartY && x < t.sel.OrigStartX) {
 			t.sel.StartX = wLeft
@@ -135,7 +136,7 @@ func (t *Terminal) UpdateSelection(x, y int) {
 			t.sel.EndX = wRight
 			t.sel.EndY = y
 		}
-	} else if t.sel.Mode == SelectionModeLine {
+	case SelectionModeLine:
 		if y < t.sel.OrigStartY {
 			t.sel.StartX = 0
 			t.sel.StartY = y
@@ -147,7 +148,7 @@ func (t *Terminal) UpdateSelection(x, y int) {
 			t.sel.EndX = t.cols - 1
 			t.sel.EndY = y
 		}
-	} else {
+	default:
 		t.sel.EndX = x
 		t.sel.EndY = y
 	}

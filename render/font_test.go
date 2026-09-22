@@ -22,8 +22,11 @@ func TestFontEngineZoom(t *testing.T) {
 		t.Fatalf("expected font size 14.0 after zoom in, got %f", fe.FontSize())
 	}
 
-	if !fe.ZoomOut() || !fe.ZoomOut() {
+	if !fe.ZoomOut() {
 		t.Fatal("expected ZoomOut to succeed")
+	}
+	if !fe.ZoomOut() {
+		t.Fatal("expected second ZoomOut to succeed")
 	}
 	if fe.FontSize() != 12.0 {
 		t.Fatalf("expected font size 12.0 after two zoom outs, got %f", fe.FontSize())

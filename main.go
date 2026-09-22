@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"terrat/autosuggest"
 	"terrat/config"
@@ -426,34 +428,8 @@ func main() {
 	}
 
 	updateSearchMatches := func() {
-		searchMatches = nil
+		searchMatches = findSearchMatches(tabs[activeTabIdx].Term, searchQuery)
 		activeSearchIdx = 0
-		if searchQuery == "" {
-			return
-		}
-		lowerQuery := strings.ToLower(searchQuery)
-		activeTerm := tabs[activeTabIdx].Term
-		for y := 0; y < activeTerm.Rows(); y++ {
-			rowStr := strings.ToLower(activeTerm.GetRowString(y))
-			idx := 0
-			for {
-				pos := strings.Index(rowStr[idx:], lowerQuery)
-				if pos == -1 {
-					break
-				}
-				startCol := idx + pos
-				endCol := startCol + len(searchQuery) - 1
-				searchMatches = append(searchMatches, render.SearchMatch{
-					Row:      y,
-					StartCol: startCol,
-					EndCol:   endCol,
-				})
-				idx = startCol + 1
-				if idx >= len(rowStr) {
-					break
-				}
-			}
-		}
 	}
 
 	applyZoom := func(action platform.ActionType) {
@@ -544,19 +520,19 @@ func main() {
 				Enabled:  isSearchOpen,
 			},
 			{
-				ID:       "theme",
-				Label:    "Color Theme",
-				Value:    themeDisplay,
+				ID:    "theme",
+				Label: "Color Theme",
+				Value: themeDisplay,
 			},
 			{
-				ID:       "font_size",
-				Label:    "Font Size",
-				Value:    fmt.Sprintf("%.0fpt", appConfig.FontSize),
+				ID:    "font_size",
+				Label: "Font Size",
+				Value: fmt.Sprintf("%.0fpt", appConfig.FontSize),
 			},
 			{
-				ID:       "opacity",
-				Label:    "Window Opacity",
-				Value:    fmt.Sprintf("%d%%", int(appConfig.Opacity*100)),
+				ID:    "opacity",
+				Label: "Window Opacity",
+				Value: fmt.Sprintf("%d%%", int(appConfig.Opacity*100)),
 			},
 		}
 	}
@@ -588,6 +564,8 @@ func main() {
 		case "search":
 			isSearchOpen = !isSearchOpen
 			if isSearchOpen {
+				// Close the settings modal so keyboard focus goes to the search bar
+				isPrefOpen = false
 				updateSearchMatches()
 			}
 		case "theme":
@@ -1327,11 +1305,12 @@ func main() {
 		case platform.ButtonReleaseEvent:
 			if activeTerm.MouseTrackingLocked() && (e.State&platform.ModShift) == 0 {
 				btn := -1
-				if e.Detail == 1 {
+				switch e.Detail {
+				case 1:
 					btn = 0
-				} else if e.Detail == 2 {
+				case 2:
 					btn = 1
-				} else if e.Detail == 3 {
+				case 3:
 					btn = 2
 				}
 				if btn >= 0 && sendMouseEvent(btn, false, int(e.EventX), int(e.EventY), e.State) {
@@ -1459,231 +1438,238 @@ func main() {
 				continue
 			}
 
-				if action == platform.ActionSearch {
-					isSearchOpen = !isSearchOpen
-					if !isSearchOpen {
-						searchMatches = nil
-					} else {
-						updateSearchMatches()
-					}
-					triggerRedraw()
-					continue
+			if action == platform.ActionSearch {
+				isSearchOpen = !isSearchOpen
+				if !isSearchOpen {
+					searchMatches = nil
+				} else {
+					updateSearchMatches()
 				}
+				triggerRedraw()
+				continue
+			}
 
-				if isSearchOpen {
-					isShift := (e.State & platform.ModShift) != 0
-					isCtrl := (e.State & platform.ModCtrl) != 0
-					isAlt := (e.State & platform.ModAlt) != 0
+			if isSearchOpen {
+				isShift := (e.State & platform.ModShift) != 0
+				isCtrl := (e.State & platform.ModCtrl) != 0
+				isAlt := (e.State & platform.ModAlt) != 0
 
-					switch keysym {
-					case 0xff1b:
-						isSearchOpen = false
-						searchMatches = nil
-						triggerRedraw()
-					case 0xff0d:
-						if len(searchMatches) > 0 {
-							if isShift {
-								activeSearchIdx = (activeSearchIdx - 1 + len(searchMatches)) % len(searchMatches)
-							} else {
-								activeSearchIdx = (activeSearchIdx + 1) % len(searchMatches)
-							}
-							triggerRedraw()
-						}
-					case 0xff08:
-						if len(searchQuery) > 0 {
-							searchQuery = searchQuery[:len(searchQuery)-1]
-							updateSearchMatches()
-							triggerRedraw()
-						}
-					case 0xff52:
-						if len(searchMatches) > 0 {
+				switch keysym {
+				case 0xff1b:
+					isSearchOpen = false
+					searchMatches = nil
+					triggerRedraw()
+				case 0xff0d:
+					if len(searchMatches) > 0 {
+						if isShift {
 							activeSearchIdx = (activeSearchIdx - 1 + len(searchMatches)) % len(searchMatches)
-							triggerRedraw()
-						}
-					case 0xff54:
-						if len(searchMatches) > 0 {
+						} else {
 							activeSearchIdx = (activeSearchIdx + 1) % len(searchMatches)
-							triggerRedraw()
 						}
-					default:
-						if !isCtrl && !isAlt && keysym >= 32 && keysym <= 126 {
-							searchQuery += string(rune(keysym))
-							updateSearchMatches()
-							triggerRedraw()
-						}
-					}
-					continue
-				}
-
-				if action == platform.ActionZoomIn || action == platform.ActionZoomOut || action == platform.ActionZoomReset {
-					applyZoom(action)
-					continue
-				}
-
-				if action == platform.ActionToggleDiagnostics {
-					appConfig.Diagnostics = !appConfig.Diagnostics
-					_ = config.Save(appConfig)
-					if !appConfig.Diagnostics {
-						activeDiag = nil
-					} else {
-						updateDiagnostics()
-					}
-					triggerRedraw()
-					continue
-				}
-
-				if action == platform.ActionNewTab {
-					newTab, err := createTab(canvas.Cols(), canvas.Rows(), currentWidth, currentHeight, activeTheme)
-					if err == nil {
-						tabs = append(tabs, newTab)
-						switchTab(len(tabs) - 1)
-					}
-					continue
-				} else if action == platform.ActionCloseTab {
-					closeTab(activeTabIdx)
-					continue
-				} else if action == platform.ActionNextTab {
-					if len(tabs) > 1 {
-						switchTab((activeTabIdx + 1) % len(tabs))
-					}
-					continue
-				} else if action == platform.ActionPrevTab {
-					if len(tabs) > 1 {
-						switchTab((activeTabIdx - 1 + len(tabs)) % len(tabs))
-					}
-					continue
-				} else if action >= platform.ActionSwitchTab1 && action <= platform.ActionSwitchTab9 {
-					tIdx := int(action - platform.ActionSwitchTab1)
-					if tIdx < len(tabs) {
-						switchTab(tIdx)
-					}
-					continue
-				}
-
-				if action == platform.ActionCopy {
-					if activeTerm.HasSelection() {
-						text := activeTerm.GetSelectedText()
-						if text != "" {
-							win.SetClipboard(text)
-							win.SetPrimary(text)
-						}
-						activeTerm.ClearSelection()
 						triggerRedraw()
 					}
-				} else if action == platform.ActionPaste {
+				case 0xff08:
+					if len(searchQuery) > 0 {
+						rs := []rune(searchQuery)
+						searchQuery = string(rs[:len(rs)-1])
+						updateSearchMatches()
+						triggerRedraw()
+					}
+				case 0xff52:
+					if len(searchMatches) > 0 {
+						activeSearchIdx = (activeSearchIdx - 1 + len(searchMatches)) % len(searchMatches)
+						triggerRedraw()
+					}
+				case 0xff54:
+					if len(searchMatches) > 0 {
+						activeSearchIdx = (activeSearchIdx + 1) % len(searchMatches)
+						triggerRedraw()
+					}
+				default:
+					if !isCtrl && !isAlt {
+						// Use the platform-translated UTF-8 bytes so non-ASCII
+						// layouts (e.g. Persian) can be searched; reject control bytes.
+						if len(data) > 0 && utf8.ValidString(data) {
+							if r, size := utf8.DecodeRuneInString(data); size == len(data) && r >= 32 && r != 0x7f && unicode.IsPrint(r) {
+								searchQuery += string(r)
+								updateSearchMatches()
+								triggerRedraw()
+							}
+						}
+					}
+				}
+				continue
+			}
+
+			if action == platform.ActionZoomIn || action == platform.ActionZoomOut || action == platform.ActionZoomReset {
+				applyZoom(action)
+				continue
+			}
+
+			if action == platform.ActionToggleDiagnostics {
+				appConfig.Diagnostics = !appConfig.Diagnostics
+				_ = config.Save(appConfig)
+				if !appConfig.Diagnostics {
+					activeDiag = nil
+				} else {
+					updateDiagnostics()
+				}
+				triggerRedraw()
+				continue
+			}
+
+			if action == platform.ActionNewTab {
+				newTab, err := createTab(canvas.Cols(), canvas.Rows(), currentWidth, currentHeight, activeTheme)
+				if err == nil {
+					tabs = append(tabs, newTab)
+					switchTab(len(tabs) - 1)
+				}
+				continue
+			} else if action == platform.ActionCloseTab {
+				closeTab(activeTabIdx)
+				continue
+			} else if action == platform.ActionNextTab {
+				if len(tabs) > 1 {
+					switchTab((activeTabIdx + 1) % len(tabs))
+				}
+				continue
+			} else if action == platform.ActionPrevTab {
+				if len(tabs) > 1 {
+					switchTab((activeTabIdx - 1 + len(tabs)) % len(tabs))
+				}
+				continue
+			} else if action >= platform.ActionSwitchTab1 && action <= platform.ActionSwitchTab9 {
+				tIdx := int(action - platform.ActionSwitchTab1)
+				if tIdx < len(tabs) {
+					switchTab(tIdx)
+				}
+				continue
+			}
+
+			if action == platform.ActionCopy {
+				if activeTerm.HasSelection() {
+					text := activeTerm.GetSelectedText()
+					if text != "" {
+						win.SetClipboard(text)
+						win.SetPrimary(text)
+					}
+					activeTerm.ClearSelection()
+					triggerRedraw()
+				}
+			} else if action == platform.ActionPaste {
+				win.Paste()
+			} else if action == platform.ActionSelectAll {
+				activeTerm.SelectAll()
+				if txt := activeTerm.GetSelectedText(); txt != "" {
+					win.SetPrimary(txt)
+				}
+				triggerRedraw()
+				continue
+			} else if action == platform.ActionScrollUp {
+				if activeTerm.IsAlt() {
+					_, _ = activePTY.Write([]byte("\x1b[5~"))
+				} else {
+					activeTerm.Scroll(canvas.Rows() / 2)
+					triggerRedraw()
+				}
+			} else if action == platform.ActionScrollDown {
+				if activeTerm.IsAlt() {
+					_, _ = activePTY.Write([]byte("\x1b[6~"))
+				} else {
+					activeTerm.Scroll(-canvas.Rows() / 2)
+					triggerRedraw()
+				}
+			} else if action == platform.ActionScrollTop {
+				activeTerm.ScrollToTop()
+				triggerRedraw()
+			} else if action == platform.ActionScrollBottom {
+				activeTerm.ResetScroll()
+				triggerRedraw()
+			} else if len(data) > 0 {
+				if len(data) == 1 && data[0] == 0x03 && activeTerm.HasSelection() {
+					win.SetClipboard(activeTerm.GetSelectedText())
+					activeTerm.ClearSelection()
+					triggerRedraw()
+				} else if len(data) == 1 && data[0] == 0x16 && !activeTerm.IsAlt() {
 					win.Paste()
-				} else if action == platform.ActionSelectAll {
-					activeTerm.SelectAll()
-					if txt := activeTerm.GetSelectedText(); txt != "" {
-						win.SetPrimary(txt)
+				} else {
+					if activeGhostText != "" && !activeTerm.IsAlt() {
+						isAcceptKey := (keysym == 0xff53) || (keysym == 0xff09 && (e.State&platform.ModShift) == 0)
+						if isAcceptKey {
+							if len(currentInputBuffer) > 0 && currentInputBuffer[len(currentInputBuffer)-1] == ' ' && !strings.HasSuffix(currentInputBuffer, "\\ ") {
+								if runtime.GOOS != "windows" {
+									_, _ = activePTY.Write([]byte{0x08, '\\', ' '})
+									currentInputBuffer = currentInputBuffer[:len(currentInputBuffer)-1] + "\\ "
+								}
+							}
+							toWrite := []byte(activeGhostText)
+							_, _ = activePTY.Write(toWrite)
+							currentInputBuffer += activeGhostText
+							activeGhostText = ""
+							activeTerm.ClearSelection()
+							activeTerm.ResetScroll()
+							triggerRedraw()
+							continue
+						}
 					}
-					triggerRedraw()
-					continue
-				} else if action == platform.ActionScrollUp {
-					if activeTerm.IsAlt() {
-						_, _ = activePTY.Write([]byte("\x1b[5~"))
-					} else {
-						activeTerm.Scroll(canvas.Rows() / 2)
-						triggerRedraw()
-					}
-				} else if action == platform.ActionScrollDown {
-					if activeTerm.IsAlt() {
-						_, _ = activePTY.Write([]byte("\x1b[6~"))
-					} else {
-						activeTerm.Scroll(-canvas.Rows() / 2)
-						triggerRedraw()
-					}
-				} else if action == platform.ActionScrollTop {
-					activeTerm.ScrollToTop()
-					triggerRedraw()
-				} else if action == platform.ActionScrollBottom {
-					activeTerm.ResetScroll()
-					triggerRedraw()
-				} else if len(data) > 0 {
-					if len(data) == 1 && data[0] == 0x03 && activeTerm.HasSelection() {
-						win.SetClipboard(activeTerm.GetSelectedText())
-						activeTerm.ClearSelection()
-						triggerRedraw()
-					} else if len(data) == 1 && data[0] == 0x16 && !activeTerm.IsAlt() {
-						win.Paste()
-					} else {
-						if activeGhostText != "" && !activeTerm.IsAlt() {
-							isAcceptKey := (keysym == 0xff53) || (keysym == 0xff09 && (e.State&platform.ModShift) == 0)
-							if isAcceptKey {
-								if len(currentInputBuffer) > 0 && currentInputBuffer[len(currentInputBuffer)-1] == ' ' && !strings.HasSuffix(currentInputBuffer, "\\ ") {
-									if runtime.GOOS != "windows" {
-										_, _ = activePTY.Write([]byte{0x08, '\\', ' '})
-										currentInputBuffer = currentInputBuffer[:len(currentInputBuffer)-1] + "\\ "
+
+					if !activeTerm.IsAlt() {
+						if !activePTY.IsForegroundShell() || isPasswordPrompt(activeTerm) {
+							currentInputBuffer = ""
+							activeGhostText = ""
+							activeDiag = nil
+						} else {
+							isAlt := (e.State & platform.ModAlt) != 0
+							if isAlt && (keysym == 0xff0d || keysym == 0xff8d) && activeDiag != nil {
+								diag := diagnostics.Analyze(strings.TrimSpace(currentInputBuffer))
+								if diag != nil && diag.QuickFix != "" {
+									_, _ = activePTY.Write([]byte{0x15})
+									_, _ = activePTY.Write([]byte(diag.QuickFix))
+									currentInputBuffer = diag.QuickFix
+									updateGhostText()
+									updateDiagnostics()
+									activeTerm.ClearSelection()
+									activeTerm.ResetScroll()
+									triggerRedraw()
+									continue
+								}
+							}
+
+							if keysym == 0xff0d || keysym == 0xff8d {
+								trimmedCmd := strings.TrimSpace(currentInputBuffer)
+								if len(trimmedCmd) >= 2 {
+									suggestEngine.Add(trimmedCmd)
+									if strings.HasPrefix(trimmedCmd, "alias ") || strings.HasPrefix(trimmedCmd, "abbr ") {
+										diagnostics.RegisterAliasFromLine(trimmedCmd)
 									}
 								}
-								toWrite := []byte(activeGhostText)
-								_, _ = activePTY.Write(toWrite)
-								currentInputBuffer += activeGhostText
-								activeGhostText = ""
-								activeTerm.ClearSelection()
-								activeTerm.ResetScroll()
-								triggerRedraw()
-								continue
-							}
-						}
-
-						if !activeTerm.IsAlt() {
-							if !activePTY.IsForegroundShell() || isPasswordPrompt(activeTerm) {
 								currentInputBuffer = ""
 								activeGhostText = ""
 								activeDiag = nil
-							} else {
-								isAlt := (e.State & platform.ModAlt) != 0
-								if isAlt && (keysym == 0xff0d || keysym == 0xff8d) && activeDiag != nil {
-									diag := diagnostics.Analyze(strings.TrimSpace(currentInputBuffer))
-									if diag != nil && diag.QuickFix != "" {
-										_, _ = activePTY.Write([]byte{0x15})
-										_, _ = activePTY.Write([]byte(diag.QuickFix))
-										currentInputBuffer = diag.QuickFix
-										updateGhostText()
-										updateDiagnostics()
-										activeTerm.ClearSelection()
-										activeTerm.ResetScroll()
-										triggerRedraw()
-										continue
-									}
-								}
-
-								if keysym == 0xff0d || keysym == 0xff8d {
-									trimmedCmd := strings.TrimSpace(currentInputBuffer)
-									if len(trimmedCmd) >= 2 {
-										suggestEngine.Add(trimmedCmd)
-										if strings.HasPrefix(trimmedCmd, "alias ") || strings.HasPrefix(trimmedCmd, "abbr ") {
-											diagnostics.RegisterAliasFromLine(trimmedCmd)
-										}
-									}
-									currentInputBuffer = ""
-									activeGhostText = ""
-									activeDiag = nil
-								} else if keysym == 0xff08 {
-									if len(currentInputBuffer) > 0 {
-										currentInputBuffer = currentInputBuffer[:len(currentInputBuffer)-1]
-										updateGhostText()
-										updateDiagnostics()
-									}
-								} else if keysym == 0xff1b || (len(data) == 1 && (data[0] == 0x03 || data[0] == 0x15)) {
-									currentInputBuffer = ""
-									activeGhostText = ""
-									activeDiag = nil
-								} else if len(data) > 0 && data[0] >= 32 && data[0] != 127 {
-									currentInputBuffer += data
+							} else if keysym == 0xff08 {
+								if len(currentInputBuffer) > 0 {
+									currentInputBuffer = currentInputBuffer[:len(currentInputBuffer)-1]
 									updateGhostText()
 									updateDiagnostics()
 								}
+							} else if keysym == 0xff1b || (len(data) == 1 && (data[0] == 0x03 || data[0] == 0x15)) {
+								currentInputBuffer = ""
+								activeGhostText = ""
+								activeDiag = nil
+							} else if len(data) > 0 && data[0] >= 32 && data[0] != 127 {
+								currentInputBuffer += data
+								updateGhostText()
+								updateDiagnostics()
 							}
 						}
-
-						activeTerm.ClearSelection()
-						_, _ = activePTY.Write([]byte(data))
-						activeTerm.ResetScroll()
-						triggerRedraw()
 					}
+
+					activeTerm.ClearSelection()
+					_, _ = activePTY.Write([]byte(data))
+					activeTerm.ResetScroll()
+					triggerRedraw()
 				}
+			}
 
 		case platform.PasteNotifyEvent:
 			if len(e.Text) > 0 {
@@ -1756,11 +1742,12 @@ func main() {
 }
 
 func openURL(urlStr string) {
-	if runtime.GOOS == "windows" {
+	switch runtime.GOOS {
+	case "windows":
 		_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", urlStr).Start()
-	} else if runtime.GOOS == "darwin" {
+	case "darwin":
 		_ = exec.Command("open", urlStr).Start()
-	} else {
+	default:
 		_ = exec.Command("xdg-open", urlStr).Start()
 	}
 }
@@ -1773,4 +1760,24 @@ func drainChannel(ch chan struct{}) {
 			return
 		}
 	}
+}
+
+// findSearchMatches scans the visible grid of the terminal for all
+// case-insensitive occurrences of query. Column indices are rune-based so
+// they align with grid cells even for multi-byte characters.
+func findSearchMatches(term *terminal.Terminal, query string) []render.SearchMatch {
+	if query == "" || term == nil {
+		return nil
+	}
+	var matches []render.SearchMatch
+	for y := 0; y < term.Rows(); y++ {
+		for _, m := range terminal.FindRowMatches(term.GetRowString(y), query) {
+			matches = append(matches, render.SearchMatch{
+				Row:      y,
+				StartCol: m.StartCol,
+				EndCol:   m.EndCol,
+			})
+		}
+	}
+	return matches
 }

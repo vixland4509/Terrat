@@ -296,7 +296,7 @@ func (fe *FontEngine) GetGlyph(r rune, bold bool) *GlyphMask {
 }
 
 func (fe *FontEngine) rasterizeRune(r rune, bold bool) *GlyphMask {
-	if box := renderBoxOrBlock(r, fe.charWidth, fe.charHeight, fe.baseline); box != nil {
+	if box := renderBoxOrBlock(r, fe.charWidth, fe.charHeight); box != nil {
 		return box
 	}
 
@@ -372,7 +372,7 @@ func (fe *FontEngine) Close() {
 	}
 }
 
-func renderBoxOrBlock(r rune, w, h, baseline int) *GlyphMask {
+func renderBoxOrBlock(r rune, w, h int) *GlyphMask {
 	if w <= 0 || h <= 0 {
 		return nil
 	}
@@ -569,22 +569,22 @@ func renderBoxOrBlock(r rune, w, h, baseline int) *GlyphMask {
 		midY := h / 2
 
 		drawLine := func(mode int, x0, y0, x1, y1 int, isHoriz bool) {
-			if mode == 0 {
+			switch mode {
+			case 0:
 				return
-			}
-			if mode == 1 {
+			case 1:
 				if isHoriz {
 					fillRect(x0, midY, x1, midY+1, 0xff)
 				} else {
 					fillRect(midX, y0, midX+1, y1, 0xff)
 				}
-			} else if mode == 2 {
+			case 2:
 				if isHoriz {
 					fillRect(x0, midY-1, x1, midY+1, 0xff)
 				} else {
 					fillRect(midX-1, y0, midX+1, y1, 0xff)
 				}
-			} else if mode == 3 {
+			case 3:
 				if isHoriz {
 					fillRect(x0, midY-2, x1, midY-1, 0xff)
 					fillRect(x0, midY+1, x1, midY+2, 0xff)

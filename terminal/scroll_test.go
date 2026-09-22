@@ -19,7 +19,7 @@ func TestScrollOffsetClamping(t *testing.T) {
 	}
 
 	for i := 0; i < 50; i++ {
-		term.Write([]byte(fmt.Sprintf("Line %02d\r\n", i)))
+		term.Write(fmt.Appendf(nil, "Line %02d\r\n", i))
 	}
 
 	sbLen := term.ScrollbackLen()
@@ -63,7 +63,7 @@ func TestSeamlessScrollbackGridBoundary(t *testing.T) {
 	term := New(20, 10)
 
 	for i := 0; i < 20; i++ {
-		term.Write([]byte(fmt.Sprintf("L%02d\r\n", i)))
+		term.Write(fmt.Appendf(nil, "L%02d\r\n", i))
 	}
 
 	term.ResetScroll()
@@ -100,7 +100,7 @@ func TestAltScreenScrollLock(t *testing.T) {
 	term := New(80, 24)
 
 	for i := 0; i < 30; i++ {
-		term.Write([]byte(fmt.Sprintf("Line %d\r\n", i)))
+		term.Write(fmt.Appendf(nil, "Line %d\r\n", i))
 	}
 
 	if term.IsAlt() {
@@ -132,7 +132,7 @@ func TestScrollKeepSelection(t *testing.T) {
 	term := New(40, 10)
 
 	for i := 0; i < 30; i++ {
-		term.Write([]byte(fmt.Sprintf("Row_%02d\r\n", i)))
+		term.Write(fmt.Appendf(nil, "Row_%02d\r\n", i))
 	}
 
 	term.StartSelection(0, 5)
@@ -174,7 +174,7 @@ func TestSetScrollOff(t *testing.T) {
 	term := New(40, 10)
 
 	for i := 0; i < 30; i++ {
-		term.Write([]byte(fmt.Sprintf("Row_%02d\r\n", i)))
+		term.Write(fmt.Appendf(nil, "Row_%02d\r\n", i))
 	}
 
 	maxScroll := term.ScrollbackLen()
@@ -215,7 +215,7 @@ func TestEditorAlternateScreenAndMargins(t *testing.T) {
 	term.Write([]byte("\x1b[2;22r"))
 	// Nano writes content and scrolls within its window
 	for i := 0; i < 50; i++ {
-		term.Write([]byte(fmt.Sprintf("editor content line %d\r\n", i)))
+		term.Write(fmt.Appendf(nil, "editor content line %d\r\n", i))
 	}
 
 	// In alternate screen, scrollback must NOT grow!

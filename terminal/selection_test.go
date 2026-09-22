@@ -140,7 +140,7 @@ func TestSelectAllWithScrollbackAndNoTrailingBlanks(t *testing.T) {
 
 	// Write 50 lines to create 40 lines of scrollback history and 10 lines in active grid
 	for i := 0; i < 50; i++ {
-		term.Write([]byte(fmt.Sprintf("Line_%02d\r\n", i)))
+		term.Write(fmt.Appendf(nil, "Line_%02d\r\n", i))
 	}
 
 	if term.ScrollbackLen() < 40 {
@@ -206,7 +206,7 @@ func TestNoTrailingEmptyLines(t *testing.T) {
 func TestSelectAllLargeScrollback(t *testing.T) {
 	term := New(80, 24)
 	for i := 0; i < 500; i++ {
-		term.Write([]byte(fmt.Sprintf("Item_%03d\r\n", i)))
+		term.Write(fmt.Appendf(nil, "Item_%03d\r\n", i))
 	}
 
 	term.SelectAll()
@@ -227,7 +227,7 @@ func TestSelectAllLargeScrollback(t *testing.T) {
 func TestSelectionScrollbackRange(t *testing.T) {
 	term := New(40, 10)
 	for i := 0; i < 30; i++ {
-		term.Write([]byte(fmt.Sprintf("Row_%02d\r\n", i)))
+		term.Write(fmt.Appendf(nil, "Row_%02d\r\n", i))
 	}
 
 	term.StartSelection(0, 2)

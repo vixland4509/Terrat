@@ -122,4 +122,3 @@ func TestConfigShellAndDefaultShell(t *testing.T) {
 		t.Fatalf("expected Shell to be 'bash' when default_shell is provided, got %q", cfg2.Shell)
 	}
 }
-

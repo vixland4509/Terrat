@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"terrat/terminal"
+	"unicode/utf8"
 )
 
 const (
@@ -589,7 +590,7 @@ func (c *Canvas) Render(term *terminal.Terminal, cursorBlink bool, title string,
 		ghostBGPixel := defaultBGPixel
 
 		for idx, r := range ghostText {
-			gx := curX + idx
+			gx := curX + utf8.RuneCountInString(ghostText[:idx])
 			if gx >= c.cols {
 				break
 			}
